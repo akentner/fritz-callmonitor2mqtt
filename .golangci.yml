@@ -1,0 +1,23 @@
+linters:
+  enable:
+    - gofmt
+    - goimports
+    - govet
+    - errcheck
+    - staticcheck
+    - unused
+    - gosimple
+    - ineffassign
+
+linters-settings:
+  gofmt:
+    simplify: true
+  goimports:
+    local-prefixes: ""
+
+run:
+  timeout: 5m
+  tests: true
+
+issues:
+  exclude-use-default: false
