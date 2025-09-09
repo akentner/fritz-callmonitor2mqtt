@@ -61,6 +61,12 @@ type CallHistory struct {
 	UpdatedAt time.Time   `json:"updated_at"`
 }
 
+// ServiceStatus represents the online/offline status of the service
+type ServiceStatus struct {
+	State       string    `json:"state"`        // "online" or "offline"
+	LastChanged time.Time `json:"last_changed"` // When the state changed
+}
+
 // AddCall adds a new call to the history, maintaining the maximum size
 func (ch *CallHistory) AddCall(event CallEvent) {
 	ch.Calls = append([]CallEvent{event}, ch.Calls...)

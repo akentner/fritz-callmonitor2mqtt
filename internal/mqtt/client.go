@@ -82,6 +82,14 @@ func (c *Client) Connect() error {
 		opts.SetPassword(c.password)
 	}
 
+	// Setup Last Will Testament (LWT)
+	lastWillTopic := fmt.Sprintf("%s/status", c.topicPrefix)
+	lastWillPayload, err := c.createStatusMessage("offline")
+	if err != nil {
+		return fmt.Errorf("failed to create last will message: %w", err)
+	}
+	opts.SetWill(lastWillTopic, string(lastWillPayload), c.qos, c.retain)
+
 	// Setup callbacks
 	opts.SetConnectionLostHandler(c.onConnectionLost)
 	opts.SetOnConnectHandler(c.onConnect)
@@ -107,6 +115,19 @@ func (c *Client) Disconnect() error {
 	}
 
 	log.Println("Disconnecting from MQTT broker...")
+	
+	// Send explicit offline message before disconnecting
+	topic := fmt.Sprintf("%s/status", c.topicPrefix)
+	payload, err := c.createStatusMessage("offline")
+	if err != nil {
+		log.Printf("Failed to create offline message: %v", err)
+	} else {
+		log.Printf("Publishing offline message to topic '%s'", topic)
+		if token := c.client.Publish(topic, c.qos, c.retain, payload); token.Wait() && token.Error() != nil {
+			log.Printf("Failed to publish offline message: %v", token.Error())
+		}
+	}
+	
 	c.client.Disconnect(250) // Wait up to 250ms for graceful disconnect
 	c.connected = false
 	log.Println("Disconnected from MQTT broker")
@@ -116,6 +137,11 @@ func (c *Client) Disconnect() error {
 // onConnect is called when the MQTT connection is established
 func (c *Client) onConnect(client mqtt.Client) {
 	log.Println("MQTT client connected")
+	
+	// Publish birth message
+	if err := c.publishBirthMessage(); err != nil {
+		log.Printf("Failed to publish birth message: %v", err)
+	}
 }
 
 // onConnectionLost is called when the MQTT connection is lost
@@ -297,4 +323,25 @@ func (c *Client) GetCallHistory() *types.CallHistory {
 	}
 	copy(historyCopy.Calls, c.callHistory.Calls)
 	return historyCopy
+}
+
+// createStatusMessage creates a JSON payload for service status (online/offline)
+func (c *Client) createStatusMessage(state string) ([]byte, error) {
+	status := types.ServiceStatus{
+		State:       state,
+		LastChanged: time.Now(),
+	}
+	return json.Marshal(status)
+}
+
+// publishBirthMessage publishes the birth message indicating the service is online
+func (c *Client) publishBirthMessage() error {
+	topic := fmt.Sprintf("%s/status", c.topicPrefix)
+	payload, err := c.createStatusMessage("online")
+	if err != nil {
+		return fmt.Errorf("failed to create birth message: %w", err)
+	}
+
+	log.Printf("Publishing birth message to topic '%s'", topic)
+	return c.publish(topic, payload)
 }

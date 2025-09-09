@@ -1,6 +1,7 @@
 package mqtt
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -134,5 +135,50 @@ func TestIsConnected(t *testing.T) {
 
 	if !client.IsConnected() {
 		t.Error("Expected client to be connected")
+	}
+}
+
+func TestCreateStatusMessage(t *testing.T) {
+	client := NewClient(
+		"localhost", 1883, "", "", "test", "test", 1, true,
+		60*time.Second, 30*time.Second,
+	)
+
+	// Test online status message
+	onlinePayload, err := client.createStatusMessage("online")
+	if err != nil {
+		t.Fatalf("Failed to create online status message: %v", err)
+	}
+
+	var onlineStatus types.ServiceStatus
+	err = json.Unmarshal(onlinePayload, &onlineStatus)
+	if err != nil {
+		t.Fatalf("Failed to unmarshal online status message: %v", err)
+	}
+
+	if onlineStatus.State != "online" {
+		t.Errorf("Expected state 'online', got '%s'", onlineStatus.State)
+	}
+
+	// Test offline status message
+	offlinePayload, err := client.createStatusMessage("offline")
+	if err != nil {
+		t.Fatalf("Failed to create offline status message: %v", err)
+	}
+
+	var offlineStatus types.ServiceStatus
+	err = json.Unmarshal(offlinePayload, &offlineStatus)
+	if err != nil {
+		t.Fatalf("Failed to unmarshal offline status message: %v", err)
+	}
+
+	if offlineStatus.State != "offline" {
+		t.Errorf("Expected state 'offline', got '%s'", offlineStatus.State)
+	}
+
+	// Verify LastChanged is recent
+	timeDiff := time.Since(offlineStatus.LastChanged)
+	if timeDiff > 5*time.Second {
+		t.Errorf("LastChanged timestamp seems too old: %v", timeDiff)
 	}
 }

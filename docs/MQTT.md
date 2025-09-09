@@ -31,6 +31,28 @@ The fritz-callmonitor2mqtt service uses the Eclipse Paho MQTT Go client to publi
 
 All topics use the configurable prefix (default: `fritz/callmonitor`):
 
+### Service Status Topic (Birth/Last Will)
+```
+{prefix}/status
+```
+- **Retained**: Yes
+- **QoS**: Configurable (default: 1)
+- **Payload**: JSON ServiceStatus object
+- **Updates**: On connect (birth) and disconnect (last will)
+
+**Payload Structure:**
+```json
+{
+  "state": "online|offline",
+  "last_changed": "2025-09-09T10:30:45Z"
+}
+```
+
+This topic implements MQTT Birth and Last Will Testament (LWT):
+- **Birth Message**: Published when the service connects with `"state": "online"`
+- **Last Will**: Automatically published by broker when connection is lost with `"state": "offline"`
+- **Graceful Shutdown**: Explicit offline message sent before disconnect
+
 ### Line Status Topics
 ```
 {prefix}/line/{line_id}/status

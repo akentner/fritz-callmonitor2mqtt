@@ -95,3 +95,31 @@ func TestCallStatusConstants(t *testing.T) {
 		}
 	}
 }
+
+func TestServiceStatus(t *testing.T) {
+	// Test online status
+	onlineStatus := ServiceStatus{
+		State:       "online",
+		LastChanged: time.Now(),
+	}
+
+	if onlineStatus.State != "online" {
+		t.Errorf("Expected state 'online', got '%s'", onlineStatus.State)
+	}
+
+	// Test offline status
+	offlineStatus := ServiceStatus{
+		State:       "offline",
+		LastChanged: time.Now(),
+	}
+
+	if offlineStatus.State != "offline" {
+		t.Errorf("Expected state 'offline', got '%s'", offlineStatus.State)
+	}
+
+	// Test time field
+	timeDiff := time.Since(offlineStatus.LastChanged)
+	if timeDiff > 1*time.Second {
+		t.Errorf("LastChanged timestamp seems incorrect: %v", timeDiff)
+	}
+}

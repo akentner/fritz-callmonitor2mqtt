@@ -21,13 +21,21 @@ A Go backend service that monitors the Fritz!Box callmonitor interface (TCP port
 
 The service publishes to the following MQTT topics (with configurable prefix):
 
+- `{prefix}/status` - Service availability with Birth/Last Will (retained)
 - `{prefix}/line/{line_id}/status` - Current status of each phone line (retained)
+- `{prefix}/line/{line_id}/last_event` - Last event for each line (retained)
 - `{prefix}/history` - Last 50 calls as JSON array (retained) 
 - `{prefix}/events/{call_type}` - Individual call events by type:
-  - `incoming` - Incoming call started
-  - `outgoing` - Outgoing call started  
+  - `ring` - Incoming call started
+  - `call` - Outgoing call started  
   - `connect` - Call connected/answered
-  - `end` - Call ended
+  - `disconnect` - Call ended
+
+### Service Availability
+The service implements MQTT Birth and Last Will Testament:
+- **Birth Message**: `{"state":"online", "last_changed":"2025-09-09T10:30:45Z"}` on connect
+- **Last Will**: `{"state":"offline", "last_changed":"2025-09-09T10:30:45Z"}` on unexpected disconnect  
+- **Graceful Shutdown**: Explicit offline message before clean disconnect
 
 ## Quick Start
 
