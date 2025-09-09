@@ -118,23 +118,28 @@ This topic implements MQTT Birth and Last Will Testament (LWT):
 - **Payload**: JSON CallEvent object
 
 **Call Types:**
-- `incoming` - Incoming call started
-- `outgoing` - Outgoing call started
+- `ring` - Incoming call started
+- `call` - Outgoing call started  
 - `connect` - Call answered/connected
-- `end` - Call ended
+- `disconnect` - Call ended
+
+**Call Tracking:**
+Each call receives a unique UUID v7 identifier that persists across all call states (ring/call → connect → disconnect). This enables tracking of complete call lifecycles and correlating events for the same call.
 
 **Payload Structure:**
 ```json
 {
-  "timestamp": "2025-09-09T10:30:45Z",
-  "type": "incoming",
-  "id": "12345",
+  "id": "01933e88-a140-7d2c-b0a8-123456789abc",
+  "timestamp": "2025-09-09T10:30:45Z", 
+  "type": "ring",
+  "direction": "inbound",
+  "line": 0,
+  "trunk": "SIP0",
   "extension": "1",
-  "caller": "123456789", 
-  "called": "987654321",
-  "line_id": "SIP0",
+  "caller": "+493023456789", 
+  "called": "+493087654321",
   "duration": 0,
-  "raw_message": "21.09.25 15:30:45;RING;0;1;123456789;987654321;SIP0"
+  "raw_message": "21.09.25 15:30:45;RING;0;123456789;987654321;SIP0"
 }
 ```
 

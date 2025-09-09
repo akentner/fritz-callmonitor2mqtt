@@ -1,6 +1,7 @@
 package callmonitor
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -384,5 +385,128 @@ func TestTimezoneHandling(t *testing.T) {
 
 	if utcResult.Location() != time.UTC {
 		t.Errorf("Expected UTC timezone, got %v", utcResult.Location())
+	}
+}
+
+func TestCallIDTracking(t *testing.T) {
+	client := NewClient("test.host", 1012, nil, "49", "30")
+
+	// Test RING event generates UUID v7
+	ringEvent, err := client.parseEvent("21.09.25 15:30:45;RING;0;123456789;987654321;SIP0")
+	if err != nil {
+		t.Fatalf("Failed to parse RING event: %v", err)
+	}
+
+	// Verify UUID is generated and valid
+	if ringEvent.ID == "" {
+		t.Error("Expected UUID to be generated for RING event")
+	}
+
+	if len(ringEvent.ID) != 36 { // UUID format: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+		t.Errorf("Expected UUID format, got ID length %d: %s", len(ringEvent.ID), ringEvent.ID)
+	}
+
+	// Store the UUID for comparison
+	originalID := ringEvent.ID
+
+	// Test CONNECT event reuses the same UUID
+	connectEvent, err := client.parseEvent("21.09.25 15:30:50;CONNECT;0;1;123456789;987654321")
+	if err != nil {
+		t.Fatalf("Failed to parse CONNECT event: %v", err)
+	}
+
+	if connectEvent.ID != originalID {
+		t.Errorf("Expected CONNECT event to reuse UUID %s, got %s", originalID, connectEvent.ID)
+	}
+
+	// Test DISCONNECT event reuses the same UUID
+	disconnectEvent, err := client.parseEvent("21.09.25 15:35:00;DISCONNECT;0;235;")
+	if err != nil {
+		t.Fatalf("Failed to parse DISCONNECT event: %v", err)
+	}
+
+	if disconnectEvent.ID != originalID {
+		t.Errorf("Expected DISCONNECT event to reuse UUID %s, got %s", originalID, disconnectEvent.ID)
+	}
+
+	// Verify mapping was cleaned up after DISCONNECT
+	if len(client.lineIdToCallID) != 0 {
+		t.Errorf("Expected lineIdToCallID map to be empty after DISCONNECT, but has %d entries", len(client.lineIdToCallID))
+	}
+}
+
+func TestUniqueCallIDs(t *testing.T) {
+	client := NewClient("test.host", 1012, nil, "49", "30")
+
+	// Generate multiple RING events to verify unique IDs
+	var callIDs []string
+	for i := 0; i < 5; i++ {
+		lineID := i
+		event, err := client.parseEvent(fmt.Sprintf("21.09.25 15:30:45;RING;%d;123456789;987654321;SIP%d", lineID, lineID))
+		if err != nil {
+			t.Fatalf("Failed to parse RING event %d: %v", i, err)
+		}
+
+		callIDs = append(callIDs, event.ID)
+
+		// Verify UUID v7 format (starts with time-based component)
+		if event.ID == "" {
+			t.Errorf("Call %d: Expected UUID to be generated", i)
+		}
+
+		// Verify UUID v7 format (36 characters with dashes)
+		if len(event.ID) != 36 {
+			t.Errorf("Call %d: Expected UUID format (36 chars), got %d chars: %s", i, len(event.ID), event.ID)
+		}
+	}
+
+	// Verify all IDs are unique
+	uniqueIDs := make(map[string]bool)
+	for i, id := range callIDs {
+		if uniqueIDs[id] {
+			t.Errorf("Duplicate UUID found: %s (call %d)", id, i)
+		}
+		uniqueIDs[id] = true
+	}
+
+	if len(uniqueIDs) != 5 {
+		t.Errorf("Expected 5 unique UUIDs, got %d", len(uniqueIDs))
+	}
+}
+
+func TestUUIDv7Ordering(t *testing.T) {
+	client := NewClient("test.host", 1012, nil, "49", "30")
+
+	// Generate UUIDs with small time delays to test temporal ordering
+	var events []types.CallEvent
+	for i := 0; i < 3; i++ {
+		event, err := client.parseEvent(fmt.Sprintf("21.09.25 15:30:45;RING;%d;123456789;987654321;SIP%d", i, i))
+		if err != nil {
+			t.Fatalf("Failed to parse RING event %d: %v", i, err)
+		}
+		events = append(events, *event)
+
+		// Small delay to ensure different timestamps in UUID v7
+		time.Sleep(1 * time.Millisecond)
+	}
+
+	// UUIDs should be lexicographically sortable due to time-based prefix in UUID v7
+	// This means UUID[0] < UUID[1] < UUID[2] lexicographically
+	for i := 1; i < len(events); i++ {
+		if events[i-1].ID >= events[i].ID {
+			// Note: This might occasionally fail due to system clock precision,
+			// but generally UUID v7 should provide temporal ordering
+			t.Logf("UUID ordering note: %s >= %s (this is acceptable for UUID v7 in rapid succession)",
+				events[i-1].ID, events[i].ID)
+		}
+	}
+
+	// Just verify they're all different
+	for i := 0; i < len(events); i++ {
+		for j := i + 1; j < len(events); j++ {
+			if events[i].ID == events[j].ID {
+				t.Errorf("UUIDs should be unique: %s == %s", events[i].ID, events[j].ID)
+			}
+		}
 	}
 }

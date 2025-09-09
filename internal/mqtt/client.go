@@ -115,7 +115,7 @@ func (c *Client) Disconnect() error {
 	}
 
 	log.Println("Disconnecting from MQTT broker...")
-	
+
 	// Send explicit offline message before disconnecting
 	topic := fmt.Sprintf("%s/status", c.topicPrefix)
 	payload, err := c.createStatusMessage("offline")
@@ -127,7 +127,7 @@ func (c *Client) Disconnect() error {
 			log.Printf("Failed to publish offline message: %v", token.Error())
 		}
 	}
-	
+
 	c.client.Disconnect(250) // Wait up to 250ms for graceful disconnect
 	c.connected = false
 	log.Println("Disconnected from MQTT broker")
@@ -137,7 +137,7 @@ func (c *Client) Disconnect() error {
 // onConnect is called when the MQTT connection is established
 func (c *Client) onConnect(client mqtt.Client) {
 	log.Println("MQTT client connected")
-	
+
 	// Publish birth message
 	if err := c.publishBirthMessage(); err != nil {
 		log.Printf("Failed to publish birth message: %v", err)

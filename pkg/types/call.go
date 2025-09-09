@@ -31,6 +31,7 @@ const (
 
 // CallEvent represents a single call monitor event from Fritz!Box
 type CallEvent struct {
+	ID         string        `json:"id"` // UUID v7 for tracking calls across states
 	Timestamp  time.Time     `json:"timestamp"`
 	Type       CallType      `json:"type"`
 	Direction  CallDirection `json:"direction"`           // Call direction (inbound/outbound)

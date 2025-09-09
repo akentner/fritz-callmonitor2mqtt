@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+
 	"fritz-callmonitor2mqtt/pkg/types"
 )
 
@@ -27,6 +29,7 @@ type Client struct {
 	lineIdToDirection map[int]types.CallDirection // Maps line ID to Line Direction
 	lineIdToCaller    map[int]string              // Maps line ID to Caller
 	lineIdToCalled    map[int]string              // Maps line ID to Called
+	lineIdToCallID    map[int]string              // Maps line ID to Call UUID for tracking across states
 }
 
 // NewClient creates a new callmonitor client
@@ -47,6 +50,7 @@ func NewClient(host string, port int, timezone *time.Location, countryCode strin
 		lineIdToDirection: make(map[int]types.CallDirection),
 		lineIdToCaller:    make(map[int]string),
 		lineIdToCalled:    make(map[int]string),
+		lineIdToCallID:    make(map[int]string),
 	}
 }
 
@@ -198,7 +202,15 @@ func (c *Client) parseEventRing(parts []string, timestamp time.Time, lineID int,
 		return nil, fmt.Errorf("invalid RING format: need at least 5 parts, got %d", len(parts))
 	}
 
+	// Generate UUID v7 for this call
+	callUUID, err := uuid.NewV7()
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate UUID v7: %w", err)
+	}
+	callID := callUUID.String()
+
 	event := &types.CallEvent{
+		ID:         callID,
 		Timestamp:  timestamp,
 		Type:       types.CallTypeRing,
 		Direction:  types.CallDirectionInbound,
@@ -216,6 +228,7 @@ func (c *Client) parseEventRing(parts []string, timestamp time.Time, lineID int,
 	c.lineIdToDirection[event.Line] = event.Direction
 	c.lineIdToCaller[event.Line] = event.Caller
 	c.lineIdToCalled[event.Line] = event.Called
+	c.lineIdToCallID[event.Line] = event.ID
 
 	return event, nil
 }
@@ -228,7 +241,15 @@ func (c *Client) parseEventCall(parts []string, timestamp time.Time, line int, r
 		return nil, fmt.Errorf("invalid CALL format: need at least 6 parts, got %d", len(parts))
 	}
 
+	// Generate UUID v7 for this call
+	callUUID, err := uuid.NewV7()
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate UUID v7: %w", err)
+	}
+	callID := callUUID.String()
+
 	event := &types.CallEvent{
+		ID:         callID,
 		Timestamp:  timestamp,
 		Type:       types.CallTypeCall,
 		Direction:  types.CallDirectionOutbound,
@@ -247,6 +268,7 @@ func (c *Client) parseEventCall(parts []string, timestamp time.Time, line int, r
 	c.lineIdToDirection[event.Line] = event.Direction
 	c.lineIdToCaller[event.Line] = event.Caller
 	c.lineIdToCalled[event.Line] = event.Called
+	c.lineIdToCallID[event.Line] = event.ID
 
 	return event, nil
 }
@@ -266,6 +288,11 @@ func (c *Client) parseEventConnect(parts []string, timestamp time.Time, line int
 		Line:       line,
 		Extension:  parts[3],
 		RawMessage: rawMessage,
+	}
+
+	// Look up stored call ID from RING/CALL event
+	if callID, exists := c.lineIdToCallID[event.Line]; exists {
+		event.ID = callID
 	}
 
 	// Look up stored line ID from RING/CALL event
@@ -305,6 +332,11 @@ func (c *Client) parseEventDisconnect(parts []string, timestamp time.Time, line 
 		RawMessage: rawMessage,
 	}
 
+	// Look up stored call ID from RING/CALL event
+	if callID, exists := c.lineIdToCallID[event.Line]; exists {
+		event.ID = callID
+	}
+
 	// parse duration
 	if duration, err := strconv.Atoi(parts[3]); err == nil {
 		event.Duration = duration
@@ -333,6 +365,9 @@ func (c *Client) parseEventDisconnect(parts []string, timestamp time.Time, line 
 		event.Called = called
 		delete(c.lineIdToCalled, event.Line)
 	}
+
+	// Clean up the stored call ID
+	delete(c.lineIdToCallID, event.Line)
 
 	return event, nil
 }

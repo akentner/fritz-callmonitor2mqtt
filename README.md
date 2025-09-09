@@ -31,6 +31,13 @@ The service publishes to the following MQTT topics (with configurable prefix):
   - `connect` - Call connected/answered
   - `disconnect` - Call ended
 
+### Call Tracking with UUID v7
+Each call receives a unique UUID v7 identifier that:
+- **Persists across all call states**: Same ID for ring/call → connect → disconnect
+- **Time-based sorting**: UUID v7 contains timestamp, enabling chronological sorting
+- **Correlation**: Enables tracking complete call lifecycles in monitoring systems
+- **Example ID**: `01933e88-a140-7d2c-b0a8-123456789abc`
+
 ### Service Availability
 The service implements MQTT Birth and Last Will Testament:
 - **Birth Message**: `{"state":"online", "last_changed":"2025-09-09T10:30:45Z"}` on connect
