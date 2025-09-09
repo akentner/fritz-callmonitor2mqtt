@@ -189,10 +189,11 @@ func (app *Application) processEvents() error {
 			return nil
 
 		case event := <-app.callmonitorClient.Events():
-			log.Printf("Received call event: %s - %s -> %s (Type: %s, LineID: %d, LineName: %s)",
+			log.Printf("Received call event: %s - %s -> %s (ID: %s,Type: %s, Line: %d, Trunk: %s)",
 				event.Timestamp.Format("15:04:05"),
 				event.Caller,
 				event.Called,
+				event.ID,
 				event.Type,
 				event.Line,
 				event.Trunk)

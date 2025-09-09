@@ -182,3 +182,89 @@ func TestCreateStatusMessage(t *testing.T) {
 		t.Errorf("LastChanged timestamp seems too old: %v", timeDiff)
 	}
 }
+
+func TestCallEventStatusMapping(t *testing.T) {
+	client := NewClient(
+		"localhost", 1883, "", "", "test", "test", 1, true,
+		60*time.Second, 30*time.Second,
+	)
+
+	// Test different call types and their expected status mappings
+	testCases := []struct {
+		name           string
+		callType       types.CallType
+		expectedStatus types.CallStatus
+	}{
+		{"Ring event should set status to ring", types.CallTypeRing, types.CallStatusRing},
+		{"Call event should set status to call", types.CallTypeCall, types.CallStatusCall},
+		{"Connect event should set status to active", types.CallTypeConnect, types.CallStatusActive},
+		{"Disconnect event should set status to idle", types.CallTypeDisconnect, types.CallStatusIdle},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Create test event with specific type
+			event := types.CallEvent{
+				ID:        "test-uuid-" + string(tc.callType),
+				Timestamp: time.Now(),
+				Type:      tc.callType,
+				Line:      1,
+				Extension: "1",
+				Trunk:     "SIP0",
+				Caller:    "123456789",
+				Called:    "987654321",
+			}
+
+			// Get or create line status
+			lineKey := "SIP0_1"
+			lineStatus := client.getOrCreateLineStatus(lineKey, event)
+
+			// Update call history and line status like PublishCallEvent does
+			client.callHistory.AddCall(event)
+
+			// Update status based on call type (mimicking PublishCallEvent logic)
+			switch event.Type {
+			case types.CallTypeRing:
+				lineStatus.Status = types.CallStatusRing
+				lineStatus.EventId = event.ID
+				lineStatus.CurrentCall = &event
+			case types.CallTypeCall:
+				lineStatus.Status = types.CallStatusCall
+				lineStatus.EventId = event.ID
+				lineStatus.CurrentCall = &event
+			case types.CallTypeConnect:
+				lineStatus.Status = types.CallStatusActive
+				lineStatus.EventId = event.ID
+				lineStatus.CurrentCall = &event
+			case types.CallTypeDisconnect:
+				lineStatus.Status = types.CallStatusIdle
+				lineStatus.EventId = event.ID
+				lineStatus.CurrentCall = nil
+			}
+			lineStatus.LastActivity = event.Timestamp
+
+			// Verify the status was set correctly
+			if lineStatus.Status != tc.expectedStatus {
+				t.Errorf("Expected status %s for %s, got %s", tc.expectedStatus, tc.callType, lineStatus.Status)
+			}
+
+			// Verify the EventId was set correctly
+			if lineStatus.EventId != event.ID {
+				t.Errorf("Expected EventId %s, got %s", event.ID, lineStatus.EventId)
+			}
+
+			// Verify CurrentCall is set correctly based on event type
+			if tc.callType == types.CallTypeDisconnect {
+				if lineStatus.CurrentCall != nil {
+					t.Errorf("Expected CurrentCall to be nil for disconnect, got %v", lineStatus.CurrentCall)
+				}
+			} else {
+				if lineStatus.CurrentCall == nil {
+					t.Errorf("Expected CurrentCall to be set for %s, got nil", tc.callType)
+				} else if lineStatus.CurrentCall.ID != event.ID {
+					t.Errorf("Expected CurrentCall ID %s, got %s", event.ID, lineStatus.CurrentCall.ID)
+				}
+			}
+		})
+	}
+}

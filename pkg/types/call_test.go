@@ -85,6 +85,7 @@ func TestCallStatusConstants(t *testing.T) {
 		expected string
 	}{
 		{CallStatusIdle, "idle"},
+		{CallStatusCall, "call"},
 		{CallStatusRing, "ring"},
 		{CallStatusActive, "active"},
 	}

@@ -17,6 +17,7 @@ type CallStatus string
 
 const (
 	CallStatusIdle   CallStatus = "idle"
+	CallStatusCall   CallStatus = "call"
 	CallStatusRing   CallStatus = "ring"
 	CallStatusActive CallStatus = "active"
 )
@@ -51,6 +52,7 @@ type LineStatus struct {
 	Direction    CallDirection `json:"direction"`
 	Extension    string        `json:"extension"`
 	Status       CallStatus    `json:"status"`
+	EventId      string        `json:"event_id"`
 	CurrentCall  *CallEvent    `json:"current_call,omitempty"`
 	LastActivity time.Time     `json:"last_updated"`
 }

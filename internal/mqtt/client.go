@@ -177,14 +177,21 @@ func (c *Client) PublishCallEvent(event types.CallEvent) error {
 
 	// Update status based on call type
 	switch event.Type {
-	case types.CallTypeRing, types.CallTypeCall:
+	case types.CallTypeRing:
 		lineStatus.Status = types.CallStatusRing
+		lineStatus.EventId = event.ID
+		lineStatus.CurrentCall = &event
+	case types.CallTypeCall:
+		lineStatus.Status = types.CallStatusCall
+		lineStatus.EventId = event.ID
 		lineStatus.CurrentCall = &event
 	case types.CallTypeConnect:
 		lineStatus.Status = types.CallStatusActive
+		lineStatus.EventId = event.ID
 		lineStatus.CurrentCall = &event
 	case types.CallTypeDisconnect:
 		lineStatus.Status = types.CallStatusIdle
+		lineStatus.EventId = event.ID
 		lineStatus.CurrentCall = nil
 	}
 	lineStatus.LastActivity = event.Timestamp
