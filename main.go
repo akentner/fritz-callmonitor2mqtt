@@ -58,6 +58,7 @@ func main() {
 	log.Printf("Starting fritz-callmonitor2mqtt %s...", version)
 	log.Printf("Fritz!Box: %s:%d", cfg.FritzBox.Host, cfg.FritzBox.Port)
 	log.Printf("MQTT Broker: %s:%d", cfg.MQTT.Broker, cfg.MQTT.Port)
+	log.Printf("Timezone: %s", cfg.App.Timezone)
 
 	// Create context for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())
@@ -77,10 +78,16 @@ func main() {
 		cfg.MQTT.TopicPrefix,
 		cfg.MQTT.QoS,
 		cfg.MQTT.Retain,
+		cfg.MQTT.KeepAlive,
+		cfg.MQTT.ConnectTimeout,
 	)
 
 	// Initialize callmonitor client
-	callmonitorClient := callmonitor.NewClient(cfg.FritzBox.Host, cfg.FritzBox.Port)
+	timezone, err := cfg.GetLocation()
+	if err != nil {
+		log.Fatalf("Failed to load timezone: %v", err)
+	}
+	callmonitorClient := callmonitor.NewClient(cfg.FritzBox.Host, cfg.FritzBox.Port, timezone, cfg.PBX.CountryCode, cfg.PBX.LocalAreaCode)
 
 	// Start the application
 	app := &Application{
@@ -182,12 +189,13 @@ func (app *Application) processEvents() error {
 			return nil
 
 		case event := <-app.callmonitorClient.Events():
-			log.Printf("Received call event: %s - %s -> %s (Type: %s, ID: %s)",
+			log.Printf("Received call event: %s - %s -> %s (Type: %s, LineID: %d, LineName: %s)",
 				event.Timestamp.Format("15:04:05"),
 				event.Caller,
 				event.Called,
 				event.Type,
-				event.ID)
+				event.Line,
+				event.Trunk)
 
 			// Publish event to MQTT
 			if err := app.mqttClient.PublishCallEvent(event); err != nil {

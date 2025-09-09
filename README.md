@@ -148,6 +148,7 @@ Configure the application using environment variables:
 - `FRITZ_CALLMONITOR_APP_CALL_HISTORY_SIZE` - Number of calls to keep (default: `50`)
 - `FRITZ_CALLMONITOR_APP_RECONNECT_DELAY` - Reconnection delay (default: `10s`)
 - `FRITZ_CALLMONITOR_APP_HEALTH_CHECK_PORT` - Health check port (default: `8080`)
+- `FRITZ_CALLMONITOR_APP_TIMEZONE` - Timezone for timestamp parsing (default: `Europe/Berlin`)
 
 ## Usage
 
@@ -158,7 +159,16 @@ Configure the application using environment variables:
 # Show version
 ./fritz-callmonitor2mqtt -version
 
-# Run application
+# Run application with default settings
+./fritz-callmonitor2mqtt
+
+# Run with custom timezone (e.g. for US East Coast)
+FRITZ_CALLMONITOR_APP_TIMEZONE=America/New_York ./fritz-callmonitor2mqtt
+
+# Run with multiple custom settings
+FRITZ_CALLMONITOR_FRITZBOX_HOST=192.168.1.1 \
+FRITZ_CALLMONITOR_MQTT_BROKER=mqtt.home.lan \
+FRITZ_CALLMONITOR_APP_TIMEZONE=Europe/Vienna \
 ./fritz-callmonitor2mqtt
 ```
 

@@ -83,20 +83,59 @@ build-all:
 install:
 	$(GOBUILD) $(LDFLAGS) -o $(GOPATH)/bin/$(BINARY_NAME) .
 
+# Development targets
+dev-config:
+	@echo "Loading development configuration..."
+	@if [ -f dev.env ]; then \
+		echo "✅ dev.env found"; \
+	else \
+		echo "❌ dev.env not found - please create it first"; \
+		exit 1; \
+	fi
+
+dev-run: build dev-config
+	@echo "🚀 Starting development server..."
+	@bash -c "source dev.env && ./bin/$(BINARY_NAME)"
+
+dev-test-config: dev-config
+	@bash -c "source dev.env && ./bin/$(BINARY_NAME) -config-test"
+
+dev-mqtt-test: dev-config
+	@echo "🧪 Testing MQTT connection..."
+	@bash -c 'source dev.env && echo "Testing MQTT broker at $$FRITZ_CALLMONITOR_MQTT_BROKER:$$FRITZ_CALLMONITOR_MQTT_PORT"'
+	@bash -c 'source dev.env && mosquitto_pub -h $$FRITZ_CALLMONITOR_MQTT_BROKER -p $$FRITZ_CALLMONITOR_MQTT_PORT -t "$$FRITZ_CALLMONITOR_MQTT_TOPIC_PREFIX/test" -m "Hello from fritz-callmonitor2mqtt dev environment" && echo "✅ MQTT test message sent successfully"' || echo "❌ MQTT connection failed - check if broker is running at 192.168.178.3:1883"
+
+dev-mqtt-listen: dev-config
+	@echo "👂 Listening to MQTT topics (Ctrl+C to stop)..."
+	@bash -c 'source dev.env && echo "Subscribing to: $$FRITZ_CALLMONITOR_MQTT_TOPIC_PREFIX/#"'
+	@bash -c 'source dev.env && mosquitto_sub -h $$FRITZ_CALLMONITOR_MQTT_BROKER -p $$FRITZ_CALLMONITOR_MQTT_PORT -t "$$FRITZ_CALLMONITOR_MQTT_TOPIC_PREFIX/#" -v' || echo "❌ MQTT connection failed - check if broker is running at 192.168.178.3:1883"
+
 # Show help
 help:
 	@echo "Available targets:"
-	@echo "  build        Build the binary"
-	@echo "  run          Build and run the application"
-	@echo "  dev          Run without building binary"
-	@echo "  test         Run tests"
-	@echo "  test-coverage Run tests with coverage report"
-	@echo "  bench        Run benchmarks"
-	@echo "  lint         Run linter"
-	@echo "  fmt          Format code"
-	@echo "  clean        Clean build artifacts"
-	@echo "  deps         Download dependencies"
-	@echo "  tools        Install development tools"
-	@echo "  build-all    Build for multiple platforms"
-	@echo "  install      Install binary to GOPATH/bin"
-	@echo "  help         Show this help"
+	@echo ""
+	@echo "Building & Running:"
+	@echo "  build          Build the binary"
+	@echo "  run            Build and run the application"
+	@echo "  dev            Run without building binary"
+	@echo ""
+	@echo "Development:"
+	@echo "  dev-run        Build and run with development config"
+	@echo "  dev-test-config Test development configuration"
+	@echo "  dev-mqtt-test   Test MQTT connection"
+	@echo "  dev-mqtt-listen Listen to MQTT topics"
+	@echo ""
+	@echo "Testing & Quality:"
+	@echo "  test           Run tests"
+	@echo "  test-coverage  Run tests with coverage report"
+	@echo "  bench          Run benchmarks"
+	@echo "  lint           Run linter"
+	@echo "  fmt            Format code"
+	@echo ""
+	@echo "Maintenance:"
+	@echo "  clean          Clean build artifacts"
+	@echo "  deps           Download dependencies"
+	@echo "  tools          Install development tools"
+	@echo "  build-all      Build for multiple platforms"
+	@echo "  install        Install binary to GOPATH/bin"
+	@echo "  help           Show this help"

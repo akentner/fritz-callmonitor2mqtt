@@ -7,41 +7,48 @@ import (
 	"sync"
 	"time"
 
+	mqtt "github.com/eclipse/paho.mqtt.golang"
+
 	"fritz-callmonitor2mqtt/pkg/types"
 )
 
-// Client represents a simple MQTT client interface
-// Note: This is a placeholder implementation for demonstration
-// In production, you would use a proper MQTT library like paho.mqtt.golang
+// Client represents an MQTT client using Eclipse Paho
 type Client struct {
-	broker      string
-	port        int
-	username    string
-	password    string
-	clientID    string
-	topicPrefix string
-	qos         byte
-	retain      bool
-	connected   bool
-	mu          sync.RWMutex
+	broker         string
+	port           int
+	username       string
+	password       string
+	clientID       string
+	topicPrefix    string
+	qos            byte
+	retain         bool
+	keepAlive      time.Duration
+	connectTimeout time.Duration
 
-	// Simulated connection for demo purposes
+	// MQTT client
+	client mqtt.Client
+
+	// State management
+	connected    bool
+	mu           sync.RWMutex
 	lineStatuses map[string]*types.LineStatus
 	callHistory  *types.CallHistory
 }
 
 // NewClient creates a new MQTT client
-func NewClient(broker string, port int, username, password, clientID, topicPrefix string, qos byte, retain bool) *Client {
+func NewClient(broker string, port int, username, password, clientID, topicPrefix string, qos byte, retain bool, keepAlive, connectTimeout time.Duration) *Client {
 	return &Client{
-		broker:       broker,
-		port:         port,
-		username:     username,
-		password:     password,
-		clientID:     clientID,
-		topicPrefix:  topicPrefix,
-		qos:          qos,
-		retain:       retain,
-		lineStatuses: make(map[string]*types.LineStatus),
+		broker:         broker,
+		port:           port,
+		username:       username,
+		password:       password,
+		clientID:       clientID,
+		topicPrefix:    topicPrefix,
+		qos:            qos,
+		retain:         retain,
+		keepAlive:      keepAlive,
+		connectTimeout: connectTimeout,
+		lineStatuses:   make(map[string]*types.LineStatus),
 		callHistory: &types.CallHistory{
 			Calls:   make([]types.CallEvent, 0),
 			MaxSize: 50,
@@ -54,22 +61,69 @@ func (c *Client) Connect() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	// TODO: Implement actual MQTT connection
-	// This is a placeholder for demonstration
-	log.Printf("Connecting to MQTT broker %s:%d with client ID %s", c.broker, c.port, c.clientID)
+	if c.connected {
+		return nil
+	}
+
+	// Setup MQTT client options
+	opts := mqtt.NewClientOptions()
+	brokerURL := fmt.Sprintf("tcp://%s:%d", c.broker, c.port)
+	opts.AddBroker(brokerURL)
+	opts.SetClientID(c.clientID)
+	opts.SetKeepAlive(c.keepAlive)
+	opts.SetConnectTimeout(c.connectTimeout)
+	opts.SetAutoReconnect(true)
+	opts.SetCleanSession(true)
+
+	if c.username != "" {
+		opts.SetUsername(c.username)
+	}
+	if c.password != "" {
+		opts.SetPassword(c.password)
+	}
+
+	// Setup callbacks
+	opts.SetConnectionLostHandler(c.onConnectionLost)
+	opts.SetOnConnectHandler(c.onConnect)
+
+	log.Printf("Connecting to MQTT broker %s with client ID %s", brokerURL, c.clientID)
+
+	// Create and connect client
+	c.client = mqtt.NewClient(opts)
+	if token := c.client.Connect(); token.Wait() && token.Error() != nil {
+		return fmt.Errorf("failed to connect to MQTT broker: %w", token.Error())
+	}
 
 	c.connected = true
+	log.Println("Successfully connected to MQTT broker")
 	return nil
-}
-
-// Disconnect closes the MQTT connection
+} // Disconnect closes the MQTT connection
 func (c *Client) Disconnect() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
+	if !c.connected || c.client == nil {
+		return nil
+	}
+
+	log.Println("Disconnecting from MQTT broker...")
+	c.client.Disconnect(250) // Wait up to 250ms for graceful disconnect
 	c.connected = false
 	log.Println("Disconnected from MQTT broker")
 	return nil
+}
+
+// onConnect is called when the MQTT connection is established
+func (c *Client) onConnect(client mqtt.Client) {
+	log.Println("MQTT client connected")
+}
+
+// onConnectionLost is called when the MQTT connection is lost
+func (c *Client) onConnectionLost(client mqtt.Client, err error) {
+	c.mu.Lock()
+	c.connected = false
+	c.mu.Unlock()
+	log.Printf("MQTT connection lost: %v", err)
 }
 
 // IsConnected returns the connection status
@@ -92,18 +146,18 @@ func (c *Client) PublishCallEvent(event types.CallEvent) error {
 	c.callHistory.AddCall(event)
 
 	// Update line status
-	lineKey := fmt.Sprintf("%s_%s", event.LineID, event.Extension)
-	lineStatus := c.getOrCreateLineStatus(lineKey, event.LineID, event.Extension)
+	lineKey := fmt.Sprintf("%s_%d", event.Trunk, event.Line)
+	lineStatus := c.getOrCreateLineStatus(lineKey, event)
 
 	// Update status based on call type
 	switch event.Type {
-	case types.CallTypeIncoming, types.CallTypeOutgoing:
+	case types.CallTypeRing, types.CallTypeCall:
 		lineStatus.Status = types.CallStatusRing
 		lineStatus.CurrentCall = &event
 	case types.CallTypeConnect:
 		lineStatus.Status = types.CallStatusActive
 		lineStatus.CurrentCall = &event
-	case types.CallTypeEnd:
+	case types.CallTypeDisconnect:
 		lineStatus.Status = types.CallStatusIdle
 		lineStatus.CurrentCall = nil
 	}
@@ -114,26 +168,41 @@ func (c *Client) PublishCallEvent(event types.CallEvent) error {
 		return fmt.Errorf("failed to publish line status: %w", err)
 	}
 
-	// Publish call history
-	if err := c.publishCallHistory(); err != nil {
-		return fmt.Errorf("failed to publish call history: %w", err)
+	if err := c.publishLineLastEvent(event); err != nil {
+		return fmt.Errorf("failed to publish line last event: %w", err)
 	}
 
+	// Publish call history
+	// if err := c.publishCallHistory(); err != nil {
+	// 	return fmt.Errorf("failed to publish call history: %w", err)
+	// }
+
 	// Publish individual call event
-	if err := c.publishEvent(event); err != nil {
-		return fmt.Errorf("failed to publish call event: %w", err)
-	}
+	// if err := c.publishEvent(event); err != nil {
+	// 	return fmt.Errorf("failed to publish call event: %w", err)
+	// }
 
 	return nil
 }
 
 // publishLineStatus publishes the status of a phone line
 func (c *Client) publishLineStatus(status *types.LineStatus) error {
-	topic := fmt.Sprintf("%s/line/%s/status", c.topicPrefix, status.LineID)
+	topic := fmt.Sprintf("%s/line/%d/status", c.topicPrefix, status.Line)
 
 	payload, err := json.Marshal(status)
 	if err != nil {
 		return fmt.Errorf("failed to marshal line status: %w", err)
+	}
+
+	return c.publish(topic, payload)
+}
+
+func (c *Client) publishLineLastEvent(event types.CallEvent) error {
+	topic := fmt.Sprintf("%s/line/%d/last_event", c.topicPrefix, event.Line)
+
+	payload, err := json.Marshal(event)
+	if err != nil {
+		return fmt.Errorf("failed to marshal call event: %w", err)
 	}
 
 	return c.publish(topic, payload)
@@ -165,21 +234,31 @@ func (c *Client) publishEvent(event types.CallEvent) error {
 
 // publish sends a message to the MQTT broker
 func (c *Client) publish(topic string, payload []byte) error {
-	// TODO: Implement actual MQTT publishing
-	// This is a placeholder for demonstration
+	if c.client == nil || !c.client.IsConnected() {
+		return fmt.Errorf("MQTT client not connected")
+	}
+
 	log.Printf("Publishing to topic '%s': %s", topic, string(payload))
+
+	token := c.client.Publish(topic, c.qos, c.retain, payload)
+	if token.Wait() && token.Error() != nil {
+		return fmt.Errorf("failed to publish message: %w", token.Error())
+	}
+
 	return nil
 }
 
 // getOrCreateLineStatus gets or creates a line status entry
-func (c *Client) getOrCreateLineStatus(key, lineID, extension string) *types.LineStatus {
+func (c *Client) getOrCreateLineStatus(key string, event types.CallEvent) *types.LineStatus {
 	if status, exists := c.lineStatuses[key]; exists {
 		return status
 	}
 
 	status := &types.LineStatus{
-		LineID:       lineID,
-		Extension:    extension,
+		Line:         event.Line,
+		Extension:    event.Extension,
+		Trunk:        event.Trunk,
+		Direction:    event.Direction,
 		Status:       types.CallStatusIdle,
 		LastActivity: time.Now(),
 	}

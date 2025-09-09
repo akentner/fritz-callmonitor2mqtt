@@ -14,8 +14,8 @@ func TestCallHistoryAddCall(t *testing.T) {
 	// Add first call
 	event1 := CallEvent{
 		Timestamp: time.Now(),
-		Type:      CallTypeIncoming,
-		ID:        "1",
+		Type:      CallTypeRing,
+		Line:      1,
 		Caller:    "123456789",
 		Called:    "987654321",
 	}
@@ -28,18 +28,18 @@ func TestCallHistoryAddCall(t *testing.T) {
 	// Add more calls
 	event2 := CallEvent{
 		Timestamp: time.Now(),
-		Type:      CallTypeOutgoing,
-		ID:        "2",
+		Type:      CallTypeCall,
+		Line:      2,
 	}
 	event3 := CallEvent{
 		Timestamp: time.Now(),
 		Type:      CallTypeConnect,
-		ID:        "3",
+		Line:      3,
 	}
 	event4 := CallEvent{
 		Timestamp: time.Now(),
-		Type:      CallTypeEnd,
-		ID:        "4",
+		Type:      CallTypeDisconnect,
+		Line:      4,
 	}
 
 	history.AddCall(event2)
@@ -52,12 +52,12 @@ func TestCallHistoryAddCall(t *testing.T) {
 	}
 
 	// Should be in reverse chronological order (newest first)
-	if history.Calls[0].ID != "4" {
-		t.Errorf("Expected newest call first, got ID %s", history.Calls[0].ID)
+	if history.Calls[0].Line != 4 {
+		t.Errorf("Expected newest call first, got ID %d", history.Calls[0].Line)
 	}
 
-	if history.Calls[2].ID != "2" {
-		t.Errorf("Expected oldest call last, got ID %s", history.Calls[2].ID)
+	if history.Calls[2].Line != 2 {
+		t.Errorf("Expected oldest call last, got ID %d", history.Calls[2].Line)
 	}
 }
 
@@ -66,10 +66,10 @@ func TestCallTypeConstants(t *testing.T) {
 		callType CallType
 		expected string
 	}{
-		{CallTypeIncoming, "incoming"},
-		{CallTypeOutgoing, "outgoing"},
+		{CallTypeRing, "ring"},
+		{CallTypeCall, "call"},
 		{CallTypeConnect, "connect"},
-		{CallTypeEnd, "end"},
+		{CallTypeDisconnect, "disconnect"},
 	}
 
 	for _, tt := range tests {
