@@ -157,7 +157,9 @@ func (app *Application) Run() error {
 		}
 
 		// Clean up connection
-		app.callmonitorClient.Disconnect()
+		if err := app.callmonitorClient.Disconnect(); err != nil {
+			log.Printf("Error disconnecting callmonitor: %v", err)
+		}
 
 		if app.ctx.Err() != nil {
 			return nil
@@ -203,11 +205,15 @@ func (app *Application) Shutdown() {
 	log.Println("Shutting down application...")
 
 	if app.callmonitorClient != nil {
-		app.callmonitorClient.Disconnect()
+		if err := app.callmonitorClient.Disconnect(); err != nil {
+			log.Printf("Error disconnecting callmonitor: %v", err)
+		}
 	}
 
 	if app.mqttClient != nil {
-		app.mqttClient.Disconnect()
+		if err := app.mqttClient.Disconnect(); err != nil {
+			log.Printf("Error disconnecting MQTT: %v", err)
+		}
 	}
 }
 

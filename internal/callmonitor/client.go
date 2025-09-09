@@ -85,7 +85,7 @@ func (c *Client) readLoop() {
 	defer func() {
 		c.connected = false
 		if c.conn != nil {
-			c.conn.Close()
+			_ = c.conn.Close() // Ignore error in cleanup
 		}
 	}()
 
