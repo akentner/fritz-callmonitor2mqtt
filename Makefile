@@ -5,7 +5,7 @@ GOCLEAN=$(GOCMD) clean
 GOTEST=$(GOCMD) test
 GOGET=$(GOCMD) get
 GOMOD=$(GOCMD) mod
-BINARY_NAME={{PROJECT_NAME}}
+BINARY_NAME=fritz-callmonitor2mqtt
 BINARY_UNIX=$(BINARY_NAME)_unix
 
 # Build info
