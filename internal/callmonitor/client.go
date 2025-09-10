@@ -381,7 +381,7 @@ func (c *Client) normalizePhoneNumber(phoneNumber string) string {
 
 	// If phoneNumber does not starts with "0", prepend localAreaCode
 	if !strings.HasPrefix(phoneNumber, "0") && c.localAreaCode != "" {
-		phoneNumber = "+" + c.countryCode + c.localAreaCode + phoneNumber[1:]
+		phoneNumber = "+" + c.countryCode + c.localAreaCode + phoneNumber
 	}
 
 	// Replace leading "0" with countryCode if configured

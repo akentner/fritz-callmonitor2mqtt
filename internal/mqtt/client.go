@@ -29,26 +29,30 @@ type Client struct {
 	client mqtt.Client
 
 	// State management
-	connected    bool
-	mu           sync.RWMutex
-	lineStatuses map[string]*types.LineStatus
-	callHistory  *types.CallHistory
+	connected              bool
+	mu                     sync.RWMutex
+	lineStatuses           map[string]*types.LineStatus
+	lineStatusExtensions   map[string]*types.LineStatusExtension
+	lineStatusParticipants map[string]*types.LineStatusParticipant
+	callHistory            *types.CallHistory
 }
 
 // NewClient creates a new MQTT client
 func NewClient(broker string, port int, username, password, clientID, topicPrefix string, qos byte, retain bool, keepAlive, connectTimeout time.Duration) *Client {
 	return &Client{
-		broker:         broker,
-		port:           port,
-		username:       username,
-		password:       password,
-		clientID:       clientID,
-		topicPrefix:    topicPrefix,
-		qos:            qos,
-		retain:         retain,
-		keepAlive:      keepAlive,
-		connectTimeout: connectTimeout,
-		lineStatuses:   make(map[string]*types.LineStatus),
+		broker:                 broker,
+		port:                   port,
+		username:               username,
+		password:               password,
+		clientID:               clientID,
+		topicPrefix:            topicPrefix,
+		qos:                    qos,
+		retain:                 retain,
+		keepAlive:              keepAlive,
+		connectTimeout:         connectTimeout,
+		lineStatuses:           make(map[string]*types.LineStatus),
+		lineStatusExtensions:   make(map[string]*types.LineStatusExtension),
+		lineStatusParticipants: make(map[string]*types.LineStatusParticipant),
 		callHistory: &types.CallHistory{
 			Calls:   make([]types.CallEvent, 0),
 			MaxSize: 50,
@@ -179,22 +183,17 @@ func (c *Client) PublishCallEvent(event types.CallEvent) error {
 	switch event.Type {
 	case types.CallTypeRing:
 		lineStatus.Status = types.CallStatusRing
-		lineStatus.EventId = event.ID
-		lineStatus.CurrentCall = &event
 	case types.CallTypeCall:
 		lineStatus.Status = types.CallStatusCall
-		lineStatus.EventId = event.ID
-		lineStatus.CurrentCall = &event
 	case types.CallTypeConnect:
 		lineStatus.Status = types.CallStatusActive
-		lineStatus.EventId = event.ID
-		lineStatus.CurrentCall = &event
 	case types.CallTypeDisconnect:
 		lineStatus.Status = types.CallStatusIdle
-		lineStatus.EventId = event.ID
-		lineStatus.CurrentCall = nil
+		lineStatus.Duration = &event.Duration
 	}
-	lineStatus.LastActivity = event.Timestamp
+
+	lineStatus.LastEvent = event.RawMessage
+	lineStatus.LastUpdated = event.Timestamp
 
 	// Publish line status
 	if err := c.publishLineStatus(lineStatus); err != nil {
@@ -203,6 +202,10 @@ func (c *Client) PublishCallEvent(event types.CallEvent) error {
 
 	if err := c.publishLineLastEvent(event); err != nil {
 		return fmt.Errorf("failed to publish line last event: %w", err)
+	}
+
+	if err := c.publishCallStatus(lineStatus); err != nil {
+		return fmt.Errorf("failed to publish call status: %w", err)
 	}
 
 	// Publish call history
@@ -229,6 +232,19 @@ func (c *Client) publishLineStatus(status *types.LineStatus) error {
 
 	return c.publish(topic, payload)
 }
+
+
+func (c *Client) publishCallStatus(status *types.LineStatus) error {
+	topic := fmt.Sprintf("%s/call/%s", c.topicPrefix, status.ID)
+
+	payload, err := json.Marshal(status)
+	if err != nil {
+		return fmt.Errorf("failed to marshal call status: %w", err)
+	}
+
+	return c.publish(topic, payload)
+}
+
 
 func (c *Client) publishLineLastEvent(event types.CallEvent) error {
 	topic := fmt.Sprintf("%s/line/%d/last_event", c.topicPrefix, event.Line)
@@ -288,15 +304,46 @@ func (c *Client) getOrCreateLineStatus(key string, event types.CallEvent) *types
 	}
 
 	status := &types.LineStatus{
-		Line:         event.Line,
-		Extension:    event.Extension,
-		Trunk:        event.Trunk,
-		Direction:    event.Direction,
-		Status:       types.CallStatusIdle,
-		LastActivity: time.Now(),
+		ID:          event.ID,
+		Line:        event.Line,
+		Trunk:       event.Trunk,
+		Direction:   event.Direction,
+		Status:      types.CallStatusIdle,
+		Extension:   *c.getOrCreateLineStatusExtension(event.Extension, ""),
+		Caller:      *c.getOrCreateLineStatusParticipant(event.Caller, ""),
+		Called:      *c.getOrCreateLineStatusParticipant(event.Called, ""),
+		LastEvent:   event.RawMessage,
+		LastUpdated: time.Now(),
 	}
 	c.lineStatuses[key] = status
 	return status
+}
+
+func (c *Client) getOrCreateLineStatusParticipant(phoneNumber string, name string) *types.LineStatusParticipant {
+	if participant, exists := c.lineStatusParticipants[phoneNumber]; exists {
+		return participant
+	}
+
+	participant := &types.LineStatusParticipant{
+		PhoneNumber: phoneNumber,
+		Name:        name,
+	}
+	c.lineStatusParticipants[phoneNumber] = participant
+	return participant
+}
+
+// getOrCreateExtension gets or creates a line status extension
+func (c *Client) getOrCreateLineStatusExtension(key string, name string) *types.LineStatusExtension {
+	if extension, exists := c.lineStatusExtensions[key]; exists {
+		return extension
+	}
+
+	extension := &types.LineStatusExtension{
+		ID:   key,
+		Name: name,
+	}
+	c.lineStatusExtensions[key] = extension
+	return extension
 }
 
 // GetLineStatuses returns all current line statuses
@@ -308,10 +355,6 @@ func (c *Client) GetLineStatuses() map[string]*types.LineStatus {
 	result := make(map[string]*types.LineStatus)
 	for k, v := range c.lineStatuses {
 		statusCopy := *v
-		if v.CurrentCall != nil {
-			callCopy := *v.CurrentCall
-			statusCopy.CurrentCall = &callCopy
-		}
 		result[k] = &statusCopy
 	}
 	return result

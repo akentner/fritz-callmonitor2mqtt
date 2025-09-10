@@ -64,8 +64,8 @@ func TestLineStatusManagement(t *testing.T) {
 		t.Errorf("Expected Line '1', got %d", status.Line)
 	}
 
-	if status.Extension != "1" {
-		t.Errorf("Expected Extension '1', got %s", status.Extension)
+	if status.Extension.ID != "1" {
+		t.Errorf("Expected Extension ID '1', got %s", status.Extension.ID)
 	}
 
 	if status.Status != types.CallStatusIdle {
@@ -226,22 +226,22 @@ func TestCallEventStatusMapping(t *testing.T) {
 			switch event.Type {
 			case types.CallTypeRing:
 				lineStatus.Status = types.CallStatusRing
-				lineStatus.EventId = event.ID
-				lineStatus.CurrentCall = &event
+				lineStatus.ID = event.ID
+				lineStatus.LastEvent = event.RawMessage
 			case types.CallTypeCall:
 				lineStatus.Status = types.CallStatusCall
-				lineStatus.EventId = event.ID
-				lineStatus.CurrentCall = &event
+				lineStatus.ID = event.ID
+				lineStatus.LastEvent = event.RawMessage
 			case types.CallTypeConnect:
 				lineStatus.Status = types.CallStatusActive
-				lineStatus.EventId = event.ID
-				lineStatus.CurrentCall = &event
+				lineStatus.ID = event.ID
+				lineStatus.LastEvent = event.RawMessage
 			case types.CallTypeDisconnect:
 				lineStatus.Status = types.CallStatusIdle
-				lineStatus.EventId = event.ID
-				lineStatus.CurrentCall = nil
+				lineStatus.ID = event.ID
+				lineStatus.LastEvent = event.RawMessage
 			}
-			lineStatus.LastActivity = event.Timestamp
+			lineStatus.LastUpdated = event.Timestamp
 
 			// Verify the status was set correctly
 			if lineStatus.Status != tc.expectedStatus {
@@ -249,21 +249,13 @@ func TestCallEventStatusMapping(t *testing.T) {
 			}
 
 			// Verify the EventId was set correctly
-			if lineStatus.EventId != event.ID {
-				t.Errorf("Expected EventId %s, got %s", event.ID, lineStatus.EventId)
+			if lineStatus.ID != event.ID {
+				t.Errorf("Expected EventId %s, got %s", event.ID, lineStatus.ID)
 			}
 
-			// Verify CurrentCall is set correctly based on event type
-			if tc.callType == types.CallTypeDisconnect {
-				if lineStatus.CurrentCall != nil {
-					t.Errorf("Expected CurrentCall to be nil for disconnect, got %v", lineStatus.CurrentCall)
-				}
-			} else {
-				if lineStatus.CurrentCall == nil {
-					t.Errorf("Expected CurrentCall to be set for %s, got nil", tc.callType)
-				} else if lineStatus.CurrentCall.ID != event.ID {
-					t.Errorf("Expected CurrentCall ID %s, got %s", event.ID, lineStatus.CurrentCall.ID)
-				}
+			// Verify LastEvent is set correctly
+			if lineStatus.LastEvent != event.RawMessage {
+				t.Errorf("Expected LastEvent %s, got %s", event.RawMessage, lineStatus.LastEvent)
 			}
 		})
 	}

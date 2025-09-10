@@ -22,8 +22,8 @@ func TestParseCallEvent(t *testing.T) {
 			expected: &types.CallEvent{
 				Type:   types.CallTypeRing,
 				Line:   0,
-				Caller: "+493023456789",
-				Called: "+493087654321",
+				Caller: "+4930123456789",
+				Called: "+4930987654321",
 				Trunk:  "SIP0",
 			},
 		},
@@ -34,8 +34,8 @@ func TestParseCallEvent(t *testing.T) {
 				Type:      types.CallTypeCall,
 				Line:      1,
 				Extension: "2",
-				Caller:    "+493087654321",
-				Called:    "+493023456789",
+				Caller:    "+4930987654321",
+				Called:    "+4930123456789",
 				Trunk:     "SIP1",
 			},
 		},
@@ -106,7 +106,7 @@ func TestParseCallEvent(t *testing.T) {
 				Type:   types.CallTypeRing,
 				Line:   0,
 				Caller: "+491784567890", // 01784567890 normalized
-				Called: "+493090134",    // 990134 normalized with area code
+				Called: "+4930990134",   // 990134 normalized with area code
 				Trunk:  "SIP1",
 			},
 		},

@@ -35,26 +35,39 @@ type CallEvent struct {
 	ID         string        `json:"id"` // UUID v7 for tracking calls across states
 	Timestamp  time.Time     `json:"timestamp"`
 	Type       CallType      `json:"type"`
-	Direction  CallDirection `json:"direction"`           // Call direction (inbound/outbound)
-	Line       int           `json:"line"`                // Line ID
-	Trunk      string        `json:"trunk"`               // SIP line ID
-	Extension  string        `json:"extension,omitempty"` // Internal extension (e.g., "1", "2")
-	Caller     string        `json:"caller"`              // Calling number
-	Called     string        `json:"called"`              // Called number
-	Duration   int           `json:"duration,omitempty"`  // Duration in seconds (for end events)
-	RawMessage string        `json:"raw_message"`         // Original Fritz!Box message
+	Direction  CallDirection `json:"direction"`             // Call direction (inbound/outbound)
+	Line       int           `json:"line"`                  // Line ID
+	Trunk      string        `json:"trunk,omitempty"`       // SIP line ID
+	Extension  string        `json:"extension,omitempty"`   // Internal extension (e.g., "1", "2")
+	Caller     string        `json:"caller,omitempty"`      // Calling number
+	Called     string        `json:"called,omitempty"`      // Called number
+	Duration   int           `json:"duration,omitempty"`    // Duration in seconds (for end events)
+	RawMessage string        `json:"raw_message,omitempty"` // Original Fritz!Box message
 }
 
 // LineStatus represents the current status of a phone line
 type LineStatus struct {
-	Line         int           `json:"line"`
-	Trunk        string        `json:"trunk"`
-	Direction    CallDirection `json:"direction"`
-	Extension    string        `json:"extension"`
-	Status       CallStatus    `json:"status"`
-	EventId      string        `json:"event_id"`
-	CurrentCall  *CallEvent    `json:"current_call,omitempty"`
-	LastActivity time.Time     `json:"last_updated"`
+	ID          string                `json:"id"`
+	Line        int                   `json:"line"`
+	Trunk       string                `json:"trunk"`
+	Direction   CallDirection         `json:"direction"`
+	Extension   LineStatusExtension   `json:"extension"`
+	Status      CallStatus            `json:"status"`
+	Caller      LineStatusParticipant `json:"caller"`
+	Called      LineStatusParticipant `json:"called"`
+	Duration    *int                  `json:"duration,omitempty"`
+	LastEvent   string                `json:"last_event"`
+	LastUpdated time.Time             `json:"last_updated"`
+}
+
+type LineStatusParticipant struct {
+	PhoneNumber string `json:"phone_number"`
+	Name        string `json:"name"`
+}
+
+type LineStatusExtension struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
 }
 
 // CallHistory represents a list of recent calls
