@@ -1,5 +1,5 @@
 # Golang Dev Container
-FROM golang:1.23-bullseye
+FROM golang:1.25-bookworm
 
 # Install additional tools and dependencies including sudo
 RUN apt-get update && apt-get install -y \
@@ -17,10 +17,11 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Go tools (with compatible versions)
-RUN go install golang.org/x/tools/gopls@v0.18.0 \
+RUN go install golang.org/x/tools/gopls@v0.20.0 \
     && go install github.com/go-delve/delve/cmd/dlv@latest \
     && go install honnef.co/go/tools/cmd/staticcheck@latest \
-    && go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+    && go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest \
+    && go install github.com/goreleaser/goreleaser/v2@latest
 
 # Set up vscode user
 ARG USERNAME=vscode

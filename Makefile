@@ -47,6 +47,34 @@ test-coverage:
 bench:
 	$(GOTEST) -bench=. -benchmem ./...
 
+# Cross-platform builds
+build-all: clean
+	./scripts/build-cross-platform.sh $(VERSION)
+
+# Build for Linux AMD64
+build-linux:
+	GOOS=linux GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -o bin/$(BINARY_NAME)-linux-amd64 .
+
+# Build for Windows AMD64  
+build-windows:
+	GOOS=windows GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -o bin/$(BINARY_NAME)-windows-amd64.exe .
+
+# Build for macOS AMD64
+build-darwin:
+	GOOS=darwin GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -o bin/$(BINARY_NAME)-darwin-amd64 .
+
+# Build for ARM64 (Apple Silicon)
+build-darwin-arm64:
+	GOOS=darwin GOARCH=arm64 $(GOBUILD) $(LDFLAGS) -o bin/$(BINARY_NAME)-darwin-arm64 .
+
+# Build for Linux ARM64 (Raspberry Pi 4)
+build-linux-arm64:
+	GOOS=linux GOARCH=arm64 $(GOBUILD) $(LDFLAGS) -o bin/$(BINARY_NAME)-linux-arm64 .
+
+# Build for Linux ARM (Raspberry Pi 3)
+build-linux-arm:
+	GOOS=linux GOARCH=arm GOARM=7 $(GOBUILD) $(LDFLAGS) -o bin/$(BINARY_NAME)-linux-armv7 .
+
 # Run linter
 lint:
 	golangci-lint run
