@@ -1,0 +1,91 @@
+# GoReleaser configuration
+# See: https://goreleaser.com
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+version: 2
+
+project_name: fritz-callmonitor2mqtt
+
+before:
+  hooks:
+    - go mod tidy
+    - go generate ./...
+
+builds:
+  - env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+      - arm
+    goarm:
+      - 7
+    ignore:
+      - goos: windows
+        goarch: arm
+    ldflags:
+      - -s -w
+      - -X main.version={{.Version}}
+      - -X main.commit={{.Commit}}
+      - -X main.date={{.Date}}
+    binary: fritz-callmonitor2mqtt
+
+archives:
+  - formats: 
+    - tar.gz
+    name_template: "{{ .ProjectName }}-{{ .Version }}-{{ .Os }}-{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}"
+    format_overrides:
+      - goos: windows
+        formats: 
+          - zip
+    files:
+      - README.md
+      - LICENSE
+      - config.env.example
+
+checksum:
+  name_template: "checksums.txt"
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+      - "^build:"
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
+      order: 0
+    - title: Bug fixes
+      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
+      order: 1
+    - title: Others
+      order: 999
+
+release:
+  github:
+    owner: akentner
+    name: fritz-callmonitor2mqtt
+  draft: false
+  prerelease: auto
+  name_template: "Release {{ .Tag }}"
+
+# Docker images disabled for now
+# Uncomment and create Dockerfile if needed
+# dockers:
+#   - image_templates:
+#       - "ghcr.io/akentner/fritz-callmonitor2mqtt:{{ .Version }}-amd64"
+#       - "ghcr.io/akentner/fritz-callmonitor2mqtt:latest-amd64"
+#     dockerfile: Dockerfile
+#     use: buildx
+#     build_flag_templates:
+#       - "--platform=linux/amd64"
