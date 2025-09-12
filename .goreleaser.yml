@@ -46,6 +46,10 @@ archives:
       - LICENSE
       - config.env.example
 
+git:
+  prerelease_suffix: "-rc*"
+  tag_sort: semver
+
 checksum:
   name_template: "checksums.txt"
 
