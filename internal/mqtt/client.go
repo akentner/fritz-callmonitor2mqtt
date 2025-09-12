@@ -233,7 +233,6 @@ func (c *Client) publishLineStatus(status *types.LineStatus) error {
 	return c.publish(topic, payload)
 }
 
-
 func (c *Client) publishCallStatus(status *types.LineStatus) error {
 	topic := fmt.Sprintf("%s/call/%s", c.topicPrefix, status.ID)
 
@@ -244,7 +243,6 @@ func (c *Client) publishCallStatus(status *types.LineStatus) error {
 
 	return c.publish(topic, payload)
 }
-
 
 func (c *Client) publishLineLastEvent(event types.CallEvent) error {
 	topic := fmt.Sprintf("%s/line/%d/last_event", c.topicPrefix, event.Line)
@@ -258,28 +256,28 @@ func (c *Client) publishLineLastEvent(event types.CallEvent) error {
 }
 
 // publishCallHistory publishes the call history
-func (c *Client) publishCallHistory() error {
-	topic := fmt.Sprintf("%s/history", c.topicPrefix)
+// func (c *Client) publishCallHistory() error {
+// 	topic := fmt.Sprintf("%s/history", c.topicPrefix)
 
-	payload, err := json.Marshal(c.callHistory)
-	if err != nil {
-		return fmt.Errorf("failed to marshal call history: %w", err)
-	}
+// 	payload, err := json.Marshal(c.callHistory)
+// 	if err != nil {
+// 		return fmt.Errorf("failed to marshal call history: %w", err)
+// 	}
 
-	return c.publish(topic, payload)
-}
+// 	return c.publish(topic, payload)
+// }
 
 // publishEvent publishes a single call event
-func (c *Client) publishEvent(event types.CallEvent) error {
-	topic := fmt.Sprintf("%s/events/%s", c.topicPrefix, event.Type)
+// func (c *Client) publishEvent(event types.CallEvent) error {
+// 	topic := fmt.Sprintf("%s/events/%s", c.topicPrefix, event.Type)
 
-	payload, err := json.Marshal(event)
-	if err != nil {
-		return fmt.Errorf("failed to marshal call event: %w", err)
-	}
+// 	payload, err := json.Marshal(event)
+// 	if err != nil {
+// 		return fmt.Errorf("failed to marshal call event: %w", err)
+// 	}
 
-	return c.publish(topic, payload)
-}
+// 	return c.publish(topic, payload)
+// }
 
 // publish sends a message to the MQTT broker
 func (c *Client) publish(topic string, payload []byte) error {
