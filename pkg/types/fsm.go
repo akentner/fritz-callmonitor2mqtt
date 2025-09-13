@@ -4,18 +4,28 @@ import (
 	"context"
 	"sync"
 	"time"
+
+	"github.com/google/uuid"
 )
+
+// DatabasePersister interface for call persistence operations
+type DatabasePersister interface {
+	InsertCall(callID uuid.UUID, line int, status CallStatus, event *CallEvent) error
+	UpdateCall(callID uuid.UUID, status CallStatus, finishState *CallStatus, event *CallEvent) error
+}
 
 // CallStateMachine manages the state transitions for call events
 type CallStateMachine struct {
 	mu            sync.RWMutex
 	currentState  CallStatus
 	finishState   *CallStatus // Last meaningful state before idle
+	callID        *uuid.UUID  // UUID for current call session
 	timeoutTimer  *time.Timer
 	timeoutCtx    context.Context
 	timeoutCancel context.CancelFunc
 	onStateChange func(oldState, newState CallStatus)
 	mqttPublisher MQTTPublisher
+	dbPersister   DatabasePersister
 	line          int
 	lastEvent     *CallEvent
 	lastEventType CallType
@@ -36,6 +46,17 @@ func NewCallStateMachineWithMQTT(line int, mqttPublisher MQTTPublisher, onStateC
 		currentState:  CallStatusIdle,
 		onStateChange: onStateChange,
 		mqttPublisher: mqttPublisher,
+		line:          line,
+	}
+}
+
+// NewCallStateMachineWithMQTTAndDB creates a new FSM with MQTT and database persistence support
+func NewCallStateMachineWithMQTTAndDB(line int, mqttPublisher MQTTPublisher, dbPersister DatabasePersister, onStateChange func(oldState, newState CallStatus)) *CallStateMachine {
+	return &CallStateMachine{
+		currentState:  CallStatusIdle,
+		onStateChange: onStateChange,
+		mqttPublisher: mqttPublisher,
+		dbPersister:   dbPersister,
 		line:          line,
 	}
 }
@@ -144,8 +165,36 @@ func (fsm *CallStateMachine) getNextState(currentState CallStatus, eventType Cal
 
 // setState updates the current state and handles cleanup
 func (fsm *CallStateMachine) setState(newState CallStatus) {
+	oldState := fsm.currentState
+
 	// Cancel any existing timeout
 	fsm.cancelTimeout()
+
+	// Handle call persistence
+	if fsm.dbPersister != nil {
+		// Generate new call ID for transitions from idle to ringing/calling
+		if oldState == CallStatusIdle && (newState == CallStatusRinging || newState == CallStatusCalling) {
+			newCallID := uuid.New()
+			fsm.callID = &newCallID
+
+			// Insert new call record
+			if err := fsm.dbPersister.InsertCall(*fsm.callID, fsm.line, newState, fsm.lastEvent); err != nil {
+				// Log error but don't block FSM operation
+				// TODO: Add proper logging interface
+			}
+		} else if fsm.callID != nil && oldState != CallStatusIdle {
+			// Update existing call record for all other transitions
+			if err := fsm.dbPersister.UpdateCall(*fsm.callID, newState, fsm.finishState, fsm.lastEvent); err != nil {
+				// Log error but don't block FSM operation
+				// TODO: Add proper logging interface
+			}
+		}
+
+		// Clear call ID when returning to idle
+		if newState == CallStatusIdle {
+			fsm.callID = nil
+		}
+	}
 
 	// Track finish states (final meaningful states before idle)
 	if newState == CallStatusMissedCall || newState == CallStatusNotReached || newState == CallStatusFinished {
@@ -244,6 +293,13 @@ func (fsm *CallStateMachine) GetFinishState() *CallStatus {
 	fsm.mu.RLock()
 	defer fsm.mu.RUnlock()
 	return fsm.finishState
+}
+
+// GetCallID returns the current call UUID (nil if idle)
+func (fsm *CallStateMachine) GetCallID() *uuid.UUID {
+	fsm.mu.RLock()
+	defer fsm.mu.RUnlock()
+	return fsm.callID
 }
 
 // IsValidTransition checks if a transition from current state with given event is valid

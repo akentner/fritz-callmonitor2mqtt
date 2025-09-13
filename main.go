@@ -110,8 +110,8 @@ func main() {
 	}
 	callmonitorClient := callmonitor.NewClient(cfg.FritzBox.Host, cfg.FritzBox.Port, timezone, cfg.PBX.CountryCode, cfg.PBX.LocalAreaCode, cfg.PBX.MSN)
 
-	// Initialize call manager with MQTT integration
-	callManager := types.NewCallManagerWithMQTT(mqttClient, func(line int, oldStatus, newStatus types.CallStatus, event *types.CallEvent) {
+	// Initialize call manager with MQTT and database integration
+	callManager := types.NewCallManagerWithMQTTAndDB(mqttClient, dbClient, func(line int, oldStatus, newStatus types.CallStatus, event *types.CallEvent) {
 		log.Printf("Line %d status changed: %s -> %s", line, oldStatus, newStatus)
 	})
 
