@@ -9,6 +9,7 @@ import (
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 
+	"fritz-callmonitor2mqtt/internal/database"
 	"fritz-callmonitor2mqtt/pkg/types"
 )
 
@@ -26,6 +27,9 @@ type Client struct {
 	connectTimeout time.Duration
 	logLevel       string
 
+	// Database client
+	db *database.Client
+
 	// MQTT client
 	client mqtt.Client
 
@@ -39,7 +43,7 @@ type Client struct {
 }
 
 // NewClient creates a new MQTT client
-func NewClient(broker string, port int, username, password, clientID, topicPrefix string, qos byte, retain bool, keepAlive, connectTimeout time.Duration, logLevel string) *Client {
+func NewClient(broker string, port int, username, password, clientID, topicPrefix string, qos byte, retain bool, keepAlive, connectTimeout time.Duration, logLevel string, db *database.Client) *Client {
 	return &Client{
 		broker:                 broker,
 		port:                   port,
@@ -52,6 +56,7 @@ func NewClient(broker string, port int, username, password, clientID, topicPrefi
 		keepAlive:              keepAlive,
 		connectTimeout:         connectTimeout,
 		logLevel:               logLevel,
+		db:                     db,
 		lineStatuses:           make(map[string]*types.LineStatus),
 		lineStatusExtensions:   make(map[string]*types.LineStatusExtension),
 		lineStatusParticipants: make(map[string]*types.LineStatusParticipant),
@@ -147,6 +152,11 @@ func (c *Client) onConnect(client mqtt.Client) {
 	// Publish birth message
 	if err := c.publishBirthMessage(); err != nil {
 		log.Printf("Failed to publish birth message: %v", err)
+	}
+
+	// Subscribe to phone number RPC topics
+	if err := c.subscribeToPhoneNumberRPC(); err != nil {
+		log.Printf("Failed to subscribe to phone number RPC topics: %v", err)
 	}
 }
 
@@ -528,5 +538,84 @@ func (c *Client) getValidTransitionsForStatus(status types.CallStatus) []types.C
 		return []types.CallType{types.CallTypeDisconnect}
 	default:
 		return []types.CallType{} // Final states have no valid transitions
+	}
+}
+
+// subscribeToPhoneNumberRPC subscribes to phone number RPC topics
+func (c *Client) subscribeToPhoneNumberRPC() error {
+	if c.db == nil {
+		log.Printf("Database client not available, skipping phone number RPC subscription")
+		return nil
+	}
+
+	// Subscribe to phone_number RPC request topic
+	topic := fmt.Sprintf("%s/phone_number/request", c.topicPrefix)
+	log.Printf("Subscribing to phone number RPC topic: %s", topic)
+
+	if token := c.client.Subscribe(topic, c.qos, c.handlePhoneNumberRPC); token.Wait() && token.Error() != nil {
+		return fmt.Errorf("failed to subscribe to phone number RPC topic %s: %w", topic, token.Error())
+	}
+
+	log.Printf("Successfully subscribed to phone number RPC topic: %s", topic)
+	return nil
+}
+
+// handlePhoneNumberRPC handles phone number RPC requests
+func (c *Client) handlePhoneNumberRPC(client mqtt.Client, msg mqtt.Message) {
+	log.Printf("Received phone number RPC request on topic %s: %s", msg.Topic(), string(msg.Payload()))
+
+	// Parse RPC request
+	var request database.PhoneNumberRPCRequest
+	if err := json.Unmarshal(msg.Payload(), &request); err != nil {
+		log.Printf("Failed to parse phone number RPC request: %v", err)
+		c.publishRPCError("", fmt.Sprintf("Invalid JSON: %v", err))
+		return
+	}
+
+	// Validate request
+	if err := request.Validate(); err != nil {
+		log.Printf("Invalid phone number RPC request: %v", err)
+		c.publishRPCError(request.ID, err.Error())
+		return
+	}
+
+	// Process request using database client
+	response := c.db.ProcessPhoneNumberRPC(&request)
+
+	// Publish response
+	if err := c.publishRPCResponse(*response); err != nil {
+		log.Printf("Failed to publish RPC response: %v", err)
+	}
+}
+
+// publishRPCResponse publishes an RPC response
+func (c *Client) publishRPCResponse(response database.PhoneNumberRPCResponse) error {
+	topic := fmt.Sprintf("%s/phone_number/response", c.topicPrefix)
+
+	payload, err := json.Marshal(response)
+	if err != nil {
+		return fmt.Errorf("failed to marshal RPC response: %w", err)
+	}
+
+	log.Printf("Publishing RPC response to topic '%s': %s", topic, string(payload))
+
+	if token := c.client.Publish(topic, c.qos, false, payload); token.Wait() && token.Error() != nil {
+		return fmt.Errorf("failed to publish RPC response: %w", token.Error())
+	}
+
+	return nil
+}
+
+// publishRPCError publishes an RPC error response
+func (c *Client) publishRPCError(requestID, errorMsg string) {
+	response := database.PhoneNumberRPCResponse{
+		ID:        requestID,
+		Success:   false,
+		Error:     errorMsg,
+		Timestamp: time.Now(),
+	}
+
+	if err := c.publishRPCResponse(response); err != nil {
+		log.Printf("Failed to publish RPC error response: %v", err)
 	}
 }

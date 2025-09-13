@@ -1,0 +1,242 @@
+# Fritz!Box Callmonitor Home Assistant Configuration
+# Add these sections to your configuration.yaml
+
+# MQTT Configuration (if not already configured)
+mqtt:
+  broker: !secret mqtt_broker_host
+  port: !secret mqtt_broker_port
+  username: !secret mqtt_broker_user
+  password: !secret mqtt_broker_password
+  discovery: true
+  discovery_prefix: homeassistant
+
+# Input fields for phone number management
+input_text:
+  fritz_phone_number:
+    name: "Phone Number"
+    pattern: "^\\+?[1-9]\\d{1,14}$"
+    mode: text
+    max: 20
+    
+  fritz_phone_name:
+    name: "Contact Name"
+    mode: text
+    max: 100
+
+# Template sensors for call monitoring
+template:
+  - sensor:
+      - name: "Fritz Callmonitor Status"
+        state_topic: "fritz/callmonitor/status"
+        value_template: "{{ value_json.state }}"
+        json_attributes_topic: "fritz/callmonitor/status"
+        icon: >
+          {% if is_state('sensor.fritz_callmonitor_status', 'online') %}
+            mdi:phone-check
+          {% else %}
+            mdi:phone-remove
+          {% endif %}
+        availability:
+          - topic: "fritz/callmonitor/status"
+            
+      - name: "Fritz Line 1 Status"
+        state_topic: "fritz/callmonitor/line/1/status"
+        value_template: "{{ value_json.status }}"
+        json_attributes_topic: "fritz/callmonitor/line/1/status"
+        icon: >
+          {% set status = states('sensor.fritz_line_1_status') %}
+          {% if status == 'idle' %}
+            mdi:phone
+          {% elif status == 'ringing' %}
+            mdi:phone-ring
+          {% elif status == 'calling' %}
+            mdi:phone-outgoing
+          {% elif status == 'talking' %}
+            mdi:phone-in-talk
+          {% else %}
+            mdi:phone-off
+          {% endif %}
+        availability:
+          - topic: "fritz/callmonitor/line/1/status"
+            
+      - name: "Fritz Line 1 Last Call"
+        state_topic: "fritz/callmonitor/line/1/last_event"
+        value_template: >
+          {% set event = value_json %}
+          {% if event.direction == 'inbound' %}
+            📞 {{ event.caller_name or event.caller }} → {{ event.called_name or event.called }}
+          {% else %}
+            📱 {{ event.caller_name or event.caller }} → {{ event.called_name or event.called }}
+          {% endif %}
+        json_attributes_topic: "fritz/callmonitor/line/1/last_event"
+        availability:
+          - topic: "fritz/callmonitor/line/1/last_event"
+            
+      - name: "Fritz Call History"
+        state_topic: "fritz/callmonitor/history"
+        value_template: "{{ value_json.calls | length }}"
+        json_attributes_topic: "fritz/callmonitor/history"
+        json_attributes_template: >
+          {
+            "calls": {{ value_json.calls | tojson }},
+            "last_updated": "{{ value_json.last_updated }}",
+            "total_calls": {{ value_json.calls | length }}
+          }
+        unit_of_measurement: "calls"
+        icon: "mdi:phone-log"
+        availability:
+          - topic: "fritz/callmonitor/history"
+
+# Binary sensors for call states
+binary_sensor:
+  - platform: mqtt
+    name: "Fritz Line 1 Active"
+    state_topic: "fritz/callmonitor/line/1/status"
+    value_template: >
+      {{ value_json.status in ['ringing', 'calling', 'talking'] }}
+    payload_on: "true"
+    payload_off: "false"
+    device_class: occupancy
+    icon: "mdi:phone-in-talk"
+    
+  - platform: mqtt
+    name: "Fritz Line 1 Incoming Call"
+    state_topic: "fritz/callmonitor/line/1/status"
+    value_template: >
+      {{ value_json.status == 'ringing' and value_json.direction == 'inbound' }}
+    payload_on: "true" 
+    payload_off: "false"
+    device_class: occupancy
+    icon: "mdi:phone-ring"
+    
+  - platform: mqtt
+    name: "Fritz Line 1 Outgoing Call"
+    state_topic: "fritz/callmonitor/line/1/status"
+    value_template: >
+      {{ value_json.status == 'calling' and value_json.direction == 'outbound' }}
+    payload_on: "true"
+    payload_off: "false" 
+    device_class: occupancy
+    icon: "mdi:phone-outgoing"
+
+# Scripts for phone number management  
+script:
+  fritz_set_phone_name:
+    alias: "Set Fritz Phone Name"
+    description: "Associate a name with a phone number"
+    fields:
+      phone_number:
+        description: "Phone number (e.g. +1234567890)"
+        example: "+1234567890"
+        required: true
+        selector:
+          text:
+      name:
+        description: "Contact name"
+        example: "Max Mustermann"
+        required: true
+        selector:
+          text:
+    sequence:
+      - service: mqtt.publish
+        data:
+          topic: "fritz/callmonitor/phone_number/request"
+          payload: >
+            {
+              "id": "ha-{{ now().timestamp() | round(3) }}",
+              "method": "set",
+              "phone_number": "{{ phone_number }}",
+              "name": "{{ name }}",
+              "timestamp": "{{ now().isoformat() }}Z"
+            }
+          qos: 1
+      - service: persistent_notification.create
+        data:
+          title: "Fritz Phone Number"
+          message: "Set {{ phone_number }} → {{ name }}"
+          
+  fritz_get_phone_name:
+    alias: "Get Fritz Phone Name"
+    description: "Get information for a phone number"
+    fields:
+      phone_number:
+        description: "Phone number to lookup"
+        example: "+1234567890"
+        required: true
+        selector:
+          text:
+    sequence:
+      - service: mqtt.publish
+        data:
+          topic: "fritz/callmonitor/phone_number/request"
+          payload: >
+            {
+              "id": "ha-{{ now().timestamp() | round(3) }}",
+              "method": "get", 
+              "phone_number": "{{ phone_number }}",
+              "timestamp": "{{ now().isoformat() }}Z"
+            }
+          qos: 1
+          
+  fritz_delete_phone_name:
+    alias: "Delete Fritz Phone Name"
+    description: "Delete a phone number and its name"
+    fields:
+      phone_number:
+        description: "Phone number to delete"
+        example: "+1234567890"
+        required: true
+        selector:
+          text:
+    sequence:
+      - service: mqtt.publish
+        data:
+          topic: "fritz/callmonitor/phone_number/request"
+          payload: >
+            {
+              "id": "ha-{{ now().timestamp() | round(3) }}",
+              "method": "delete",
+              "phone_number": "{{ phone_number }}",
+              "timestamp": "{{ now().isoformat() }}Z"
+            }
+          qos: 1
+      - service: persistent_notification.create
+        data:
+          title: "Fritz Phone Number"
+          message: "Deleted {{ phone_number }}"
+          
+  fritz_list_phone_names:
+    alias: "List Fritz Phone Names"
+    description: "List all stored phone numbers"
+    sequence:
+      - service: mqtt.publish
+        data:
+          topic: "fritz/callmonitor/phone_number/request"
+          payload: >
+            {
+              "id": "ha-{{ now().timestamp() | round(3) }}",
+              "method": "list",
+              "limit": 100,
+              "timestamp": "{{ now().isoformat() }}Z"
+            }
+          qos: 1
+
+# Notification services
+notify:
+  - platform: group
+    name: fritz_call_notifications
+    services:
+      - mobile_app_your_phone
+      # Add your notification platforms here
+
+# Recorder configuration to store call history
+recorder:
+  include:
+    entities:
+      - sensor.fritz_callmonitor_status
+      - sensor.fritz_line_1_status  
+      - sensor.fritz_line_1_last_call
+      - sensor.fritz_call_history
+      - binary_sensor.fritz_line_1_active
+      - binary_sensor.fritz_line_1_incoming_call
+      - binary_sensor.fritz_line_1_outgoing_call

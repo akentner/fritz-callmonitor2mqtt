@@ -1,0 +1,194 @@
+# Fritz!Box Callmonitor Automations for Home Assistant
+# Add these to your automations.yaml or via the UI
+
+# Incoming call notification
+- id: fritz_incoming_call_notification
+  alias: "Fritz Incoming Call Notification"
+  description: "Send notification when receiving a call"
+  trigger:
+    - platform: state
+      entity_id: binary_sensor.fritz_line_1_incoming_call
+      to: 'on'
+  condition:
+    - condition: template
+      value_template: >
+        {{ states.sensor.fritz_line_1_last_call.attributes.caller is defined }}
+  action:
+    - service: notify.fritz_call_notifications
+      data:
+        title: "📞 Incoming Call"
+        message: >
+          {% set call = states.sensor.fritz_line_1_last_call.attributes %}
+          {% set caller = call.caller_name or call.caller or "Unknown" %}
+          {{ caller }} is calling {{ call.called_name or call.called }}
+        data:
+          tag: "fritz_incoming_call"
+          actions:
+            - action: "FRITZ_ANSWER_CALL"
+              title: "Answer"
+            - action: "FRITZ_REJECT_CALL" 
+              title: "Reject"
+
+# Outgoing call notification
+- id: fritz_outgoing_call_notification
+  alias: "Fritz Outgoing Call Notification"
+  description: "Send notification when making a call"
+  trigger:
+    - platform: state
+      entity_id: binary_sensor.fritz_line_1_outgoing_call
+      to: 'on'
+  condition:
+    - condition: template
+      value_template: >
+        {{ states.sensor.fritz_line_1_last_call.attributes.called is defined }}
+  action:
+    - service: notify.fritz_call_notifications
+      data:
+        title: "📱 Outgoing Call"
+        message: >
+          {% set call = states.sensor.fritz_line_1_last_call.attributes %}
+          {% set called = call.called_name or call.called or "Unknown" %}
+          Calling {{ called }}
+        data:
+          tag: "fritz_outgoing_call"
+
+# TTS announcement for incoming calls (if caller name available)
+- id: fritz_announce_incoming_call
+  alias: "Fritz Announce Incoming Call"
+  description: "Announce incoming calls with caller name"
+  trigger:
+    - platform: state
+      entity_id: binary_sensor.fritz_line_1_incoming_call
+      to: 'on'
+  condition:
+    - condition: template
+      value_template: >
+        {{ states.sensor.fritz_line_1_last_call.attributes.caller_name is defined 
+           and states.sensor.fritz_line_1_last_call.attributes.caller_name != null }}
+    - condition: time
+      after: '07:00:00'
+      before: '23:00:00'
+  action:
+    - service: tts.google_translate_say
+      data:
+        entity_id: media_player.living_room_speaker
+        message: >
+          {% set caller_name = states.sensor.fritz_line_1_last_call.attributes.caller_name %}
+          Incoming call from {{ caller_name }}
+        language: 'en'  # Change to your preferred language
+
+# Log important calls to persistent notification
+- id: fritz_log_important_calls
+  alias: "Fritz Log Important Calls" 
+  description: "Create persistent notifications for calls from important contacts"
+  trigger:
+    - platform: state
+      entity_id: sensor.fritz_line_1_last_call
+  condition:
+    - condition: template
+      value_template: >
+        {% set important_contacts = ['Max Mustermann', 'Anna Schmidt', 'John Doe'] %}
+        {% set caller_name = trigger.to_state.attributes.caller_name %}
+        {% set called_name = trigger.to_state.attributes.called_name %}
+        {{ caller_name in important_contacts or called_name in important_contacts }}
+  action:
+    - service: persistent_notification.create
+      data:
+        title: "📞 Important Call"
+        message: >
+          {% set call = trigger.to_state.attributes %}
+          {% set direction = "📞" if call.direction == "inbound" else "📱" %}
+          {% set caller = call.caller_name or call.caller %}
+          {% set called = call.called_name or call.called %}
+          {{ direction }} {{ caller }} → {{ called }}
+          
+          Time: {{ call.timestamp | as_timestamp | timestamp_custom('%H:%M:%S') }}
+          Duration: {{ call.duration or 0 }} seconds
+        notification_id: "fritz_important_call_{{ call.id }}"
+
+# Auto-set caller name when unknown number calls frequently
+- id: fritz_auto_suggest_contact
+  alias: "Fritz Auto Suggest Contact"
+  description: "Suggest adding contact name for frequently calling unknown numbers"
+  trigger:
+    - platform: state
+      entity_id: sensor.fritz_call_history
+  condition:
+    - condition: template
+      value_template: >
+        {% set calls = trigger.to_state.attributes.calls %}
+        {% set recent_calls = calls | selectattr('timestamp', '>', (now() - timedelta(days=7)).isoformat()) | list %}
+        {% set unknown_callers = recent_calls | selectattr('caller_name', 'equalto', null) | map(attribute='caller') | list %}
+        {% set frequent_unknowns = unknown_callers | list | unique %}
+        {{ frequent_unknowns | select('in', unknown_callers) | list | length > 0 }}
+  action:
+    - service: persistent_notification.create
+      data:
+        title: "📞 Contact Suggestion"
+        message: >
+          {% set calls = trigger.to_state.attributes.calls %}
+          {% set recent_calls = calls | selectattr('timestamp', '>', (now() - timedelta(days=7)).isoformat()) | list %}
+          {% set unknown_callers = recent_calls | selectattr('caller_name', 'equalto', null) | map(attribute='caller') | list %}
+          {% set frequent_number = unknown_callers | list | first %}
+          The number {{ frequent_number }} has called {{ unknown_callers | select('equalto', frequent_number) | list | length }} times this week.
+          
+          Consider adding a contact name using the "Set Fritz Phone Name" script.
+        notification_id: "fritz_contact_suggestion"
+
+# Clear call notifications when call ends
+- id: fritz_clear_call_notifications
+  alias: "Fritz Clear Call Notifications"
+  description: "Clear call notifications when call ends"
+  trigger:
+    - platform: state
+      entity_id: binary_sensor.fritz_line_1_active
+      to: 'off'
+  action:
+    - service: notify.fritz_call_notifications
+      data:
+        message: "clear_notification"
+        data:
+          tag: "fritz_incoming_call"
+    - service: notify.fritz_call_notifications
+      data:
+        message: "clear_notification"
+        data:
+          tag: "fritz_outgoing_call"
+
+# Service status monitoring
+- id: fritz_service_status_alert
+  alias: "Fritz Service Status Alert"
+  description: "Alert when fritz-callmonitor2mqtt goes offline"
+  trigger:
+    - platform: state
+      entity_id: sensor.fritz_callmonitor_status
+      to: 'offline'
+      for: '00:02:00'
+  action:
+    - service: notify.fritz_call_notifications
+      data:
+        title: "⚠️ Fritz Callmonitor Offline"
+        message: "The Fritz!Box callmonitor service has gone offline and call monitoring is unavailable."
+        data:
+          tag: "fritz_service_offline"
+          priority: high
+
+# Service restored notification  
+- id: fritz_service_restored
+  alias: "Fritz Service Restored"
+  description: "Notify when fritz-callmonitor2mqtt comes back online"
+  trigger:
+    - platform: state
+      entity_id: sensor.fritz_callmonitor_status
+      to: 'online'
+  condition:
+    - condition: template
+      value_template: >
+        {{ trigger.from_state.state == 'offline' }}
+  action:
+    - service: notify.fritz_call_notifications
+      data:
+        title: "✅ Fritz Callmonitor Online"
+        message: "The Fritz!Box callmonitor service is back online and call monitoring has resumed."
+        data:
+          tag: "fritz_service_online"

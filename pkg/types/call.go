@@ -48,6 +48,8 @@ type CallEvent struct {
 	Extension   string        `json:"extension,omitempty"`    // Internal extension (e.g., "1", "2")
 	Caller      string        `json:"caller,omitempty"`       // Calling number
 	Called      string        `json:"called,omitempty"`       // Called number
+	CallerName  string        `json:"caller_name,omitempty"`  // Name associated with calling number
+	CalledName  string        `json:"called_name,omitempty"`  // Name associated with called number
 	CallerMSN   string        `json:"caller_msn,omitempty"`   // MSN if caller matches configured MSNs
 	CalledMSN   string        `json:"called_msn,omitempty"`   // MSN if called matches configured MSNs
 	Duration    int           `json:"duration,omitempty"`     // Duration in seconds (for end events)
