@@ -25,6 +25,7 @@ type Client struct {
 	timezone          *time.Location
 	countryCode       string
 	localAreaCode     string
+	msns              []string                    // Configured MSNs for detection
 	lineIdToTrunk     map[int]string              // Maps line ID to Line Name
 	lineIdToDirection map[int]types.CallDirection // Maps line ID to Line Direction
 	lineIdToCaller    map[int]string              // Maps line ID to Caller
@@ -33,7 +34,7 @@ type Client struct {
 }
 
 // NewClient creates a new callmonitor client
-func NewClient(host string, port int, timezone *time.Location, countryCode string, localAreaCode string) *Client {
+func NewClient(host string, port int, timezone *time.Location, countryCode string, localAreaCode string, msns []string) *Client {
 	if timezone == nil {
 		timezone = time.Local
 	}
@@ -46,6 +47,7 @@ func NewClient(host string, port int, timezone *time.Location, countryCode strin
 		timezone:          timezone,
 		countryCode:       countryCode,
 		localAreaCode:     localAreaCode,
+		msns:              msns,
 		lineIdToTrunk:     make(map[int]string),
 		lineIdToDirection: make(map[int]types.CallDirection),
 		lineIdToCaller:    make(map[int]string),
@@ -221,6 +223,9 @@ func (c *Client) parseEventRing(parts []string, timestamp time.Time, lineID int,
 		RawMessage: rawMessage,
 	}
 
+	// Enrich with MSN information
+	event.EnrichWithMSNs(c.msns)
+
 	// Store mapping for later DISCONNECT events
 	if event.Trunk != "" {
 		c.lineIdToTrunk[event.Line] = event.Trunk
@@ -260,6 +265,9 @@ func (c *Client) parseEventCall(parts []string, timestamp time.Time, line int, r
 		Called:     c.normalizePhoneNumber(parts[5]),
 		RawMessage: rawMessage,
 	}
+
+	// Enrich with MSN information
+	event.EnrichWithMSNs(c.msns)
 
 	// Store mapping for later DISCONNECT events
 	if event.Trunk != "" {
@@ -313,6 +321,9 @@ func (c *Client) parseEventConnect(parts []string, timestamp time.Time, line int
 	if called, exists := c.lineIdToCalled[event.Line]; exists {
 		event.Called = called
 	}
+
+	// Enrich with MSN information
+	event.EnrichWithMSNs(c.msns)
 
 	return event, nil
 }
@@ -368,6 +379,9 @@ func (c *Client) parseEventDisconnect(parts []string, timestamp time.Time, line 
 
 	// Clean up the stored call ID
 	delete(c.lineIdToCallID, event.Line)
+
+	// Enrich with MSN information
+	event.EnrichWithMSNs(c.msns)
 
 	return event, nil
 }

@@ -12,7 +12,9 @@ import (
 
 	"fritz-callmonitor2mqtt/internal/callmonitor"
 	"fritz-callmonitor2mqtt/internal/config"
+	"fritz-callmonitor2mqtt/internal/database"
 	"fritz-callmonitor2mqtt/internal/mqtt"
+	"fritz-callmonitor2mqtt/pkg/types"
 )
 
 var (
@@ -80,20 +82,46 @@ func main() {
 		cfg.MQTT.Retain,
 		cfg.MQTT.KeepAlive,
 		cfg.MQTT.ConnectTimeout,
+		cfg.App.LogLevel,
 	)
+
+	// Initialize database client
+	dbClient, err := database.NewClient(cfg.Database.DataDir)
+	if err != nil {
+		log.Fatalf("Failed to create database client: %v", err)
+	}
+
+	// Connect to database
+	if err := dbClient.Connect(); err != nil {
+		log.Fatalf("Failed to connect to database: %v", err)
+	}
+	log.Printf("Database: %s", dbClient.GetDatabasePath())
+
+	// Run migrations
+	if err := dbClient.RunEmbeddedMigrations(); err != nil {
+		log.Fatalf("Failed to run database migrations: %v", err)
+	}
+	log.Println("Database migrations completed successfully")
 
 	// Initialize callmonitor client
 	timezone, err := cfg.GetLocation()
 	if err != nil {
 		log.Fatalf("Failed to load timezone: %v", err)
 	}
-	callmonitorClient := callmonitor.NewClient(cfg.FritzBox.Host, cfg.FritzBox.Port, timezone, cfg.PBX.CountryCode, cfg.PBX.LocalAreaCode)
+	callmonitorClient := callmonitor.NewClient(cfg.FritzBox.Host, cfg.FritzBox.Port, timezone, cfg.PBX.CountryCode, cfg.PBX.LocalAreaCode, cfg.PBX.MSN)
+
+	// Initialize call manager with MQTT integration
+	callManager := types.NewCallManagerWithMQTT(mqttClient, func(line int, oldStatus, newStatus types.CallStatus, event *types.CallEvent) {
+		log.Printf("Line %d status changed: %s -> %s", line, oldStatus, newStatus)
+	})
 
 	// Start the application
 	app := &Application{
 		config:            cfg,
 		mqttClient:        mqttClient,
 		callmonitorClient: callmonitorClient,
+		dbClient:          dbClient,
+		callManager:       callManager,
 		ctx:               ctx,
 	}
 
@@ -123,6 +151,8 @@ type Application struct {
 	config            *config.Config
 	mqttClient        *mqtt.Client
 	callmonitorClient *callmonitor.Client
+	dbClient          *database.Client
+	callManager       *types.CallManager
 	ctx               context.Context
 }
 
@@ -198,8 +228,9 @@ func (app *Application) processEvents() error {
 				event.Line,
 				event.Trunk)
 
-			// Publish event to MQTT
-			if err := app.mqttClient.PublishCallEvent(event); err != nil {
+			// Process through FSM and publish event to MQTT
+			processedEvent := app.callManager.ProcessEvent(&event)
+			if err := app.mqttClient.PublishCallEvent(*processedEvent); err != nil {
 				log.Printf("Failed to publish call event: %v", err)
 			}
 
@@ -213,6 +244,10 @@ func (app *Application) processEvents() error {
 func (app *Application) Shutdown() {
 	log.Println("Shutting down application...")
 
+	if app.callManager != nil {
+		app.callManager.Cleanup()
+	}
+
 	if app.callmonitorClient != nil {
 		if err := app.callmonitorClient.Disconnect(); err != nil {
 			log.Printf("Error disconnecting callmonitor: %v", err)
@@ -222,6 +257,12 @@ func (app *Application) Shutdown() {
 	if app.mqttClient != nil {
 		if err := app.mqttClient.Disconnect(); err != nil {
 			log.Printf("Error disconnecting MQTT: %v", err)
+		}
+	}
+
+	if app.dbClient != nil {
+		if err := app.dbClient.Close(); err != nil {
+			log.Printf("Error closing database: %v", err)
 		}
 	}
 }
@@ -249,6 +290,7 @@ Configuration via Environment Variables:
   FRITZ_CALLMONITOR_MQTT_RETAIN              MQTT retain messages (default: true)
   FRITZ_CALLMONITOR_APP_LOG_LEVEL            Log level (default: info)
   FRITZ_CALLMONITOR_APP_CALL_HISTORY_SIZE    Call history size (default: 50)
+  FRITZ_CALLMONITOR_DATABASE_DATA_DIR        Database data directory (default: ./data)
 
 MQTT Topics:
   {prefix}/line/{line_id}/status   - Current status of each phone line (retained)

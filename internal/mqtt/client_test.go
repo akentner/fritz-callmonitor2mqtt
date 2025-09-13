@@ -20,6 +20,7 @@ func TestNewClient(t *testing.T) {
 		true,
 		60*time.Second,
 		30*time.Second,
+		"info",
 	)
 
 	if client.broker != "localhost" {
@@ -42,7 +43,7 @@ func TestNewClient(t *testing.T) {
 func TestLineStatusManagement(t *testing.T) {
 	client := NewClient(
 		"localhost", 1883, "", "", "test", "test", 1, true,
-		60*time.Second, 30*time.Second,
+		60*time.Second, 30*time.Second, "info",
 	)
 
 	// Create test event
@@ -87,7 +88,7 @@ func TestLineStatusManagement(t *testing.T) {
 func TestCallHistoryLimit(t *testing.T) {
 	client := NewClient(
 		"localhost", 1883, "", "", "test", "test", 1, true,
-		60*time.Second, 30*time.Second,
+		60*time.Second, 30*time.Second, "info",
 	)
 
 	// Set smaller history size for testing
@@ -123,7 +124,7 @@ func TestCallHistoryLimit(t *testing.T) {
 func TestIsConnected(t *testing.T) {
 	client := NewClient(
 		"localhost", 1883, "", "", "test", "test", 1, true,
-		60*time.Second, 30*time.Second,
+		60*time.Second, 30*time.Second, "info",
 	)
 
 	if client.IsConnected() {
@@ -141,7 +142,7 @@ func TestIsConnected(t *testing.T) {
 func TestCreateStatusMessage(t *testing.T) {
 	client := NewClient(
 		"localhost", 1883, "", "", "test", "test", 1, true,
-		60*time.Second, 30*time.Second,
+		60*time.Second, 30*time.Second, "info",
 	)
 
 	// Test online status message
@@ -186,7 +187,7 @@ func TestCreateStatusMessage(t *testing.T) {
 func TestCallEventStatusMapping(t *testing.T) {
 	client := NewClient(
 		"localhost", 1883, "", "", "test", "test", 1, true,
-		60*time.Second, 30*time.Second,
+		60*time.Second, 30*time.Second, "info",
 	)
 
 	// Test different call types and their expected status mappings
@@ -195,9 +196,9 @@ func TestCallEventStatusMapping(t *testing.T) {
 		callType       types.CallType
 		expectedStatus types.CallStatus
 	}{
-		{"Ring event should set status to ring", types.CallTypeRing, types.CallStatusRing},
-		{"Call event should set status to call", types.CallTypeCall, types.CallStatusCall},
-		{"Connect event should set status to active", types.CallTypeConnect, types.CallStatusActive},
+		{"Ring event should set status to ringing", types.CallTypeRing, types.CallStatusRinging},
+		{"Call event should set status to calling", types.CallTypeCall, types.CallStatusCalling},
+		{"Connect event should set status to talking", types.CallTypeConnect, types.CallStatusTalking},
 		{"Disconnect event should set status to idle", types.CallTypeDisconnect, types.CallStatusIdle},
 	}
 
@@ -225,15 +226,15 @@ func TestCallEventStatusMapping(t *testing.T) {
 			// Update status based on call type (mimicking PublishCallEvent logic)
 			switch event.Type {
 			case types.CallTypeRing:
-				lineStatus.Status = types.CallStatusRing
+				lineStatus.Status = types.CallStatusRinging
 				lineStatus.ID = event.ID
 				lineStatus.LastEvent = event.RawMessage
 			case types.CallTypeCall:
-				lineStatus.Status = types.CallStatusCall
+				lineStatus.Status = types.CallStatusCalling
 				lineStatus.ID = event.ID
 				lineStatus.LastEvent = event.RawMessage
 			case types.CallTypeConnect:
-				lineStatus.Status = types.CallStatusActive
+				lineStatus.Status = types.CallStatusTalking
 				lineStatus.ID = event.ID
 				lineStatus.LastEvent = event.RawMessage
 			case types.CallTypeDisconnect:
@@ -258,5 +259,43 @@ func TestCallEventStatusMapping(t *testing.T) {
 				t.Errorf("Expected LastEvent %s, got %s", event.RawMessage, lineStatus.LastEvent)
 			}
 		})
+	}
+}
+
+func TestFSMDebugTopicsOnlyOnDebugLevel(t *testing.T) {
+	// Test with info log level - FSM topics should not be published
+	clientInfo := NewClient(
+		"localhost", 1883, "", "", "test", "test", 1, true,
+		60*time.Second, 30*time.Second, "info",
+	)
+
+	// Test with debug log level - FSM topics should be published
+	clientDebug := NewClient(
+		"localhost", 1883, "", "", "test", "test", 1, true,
+		60*time.Second, 30*time.Second, "debug",
+	)
+
+	// Verify log level is set correctly
+	if clientInfo.logLevel != "info" {
+		t.Errorf("Expected log level 'info', got %s", clientInfo.logLevel)
+	}
+
+	if clientDebug.logLevel != "debug" {
+		t.Errorf("Expected log level 'debug', got %s", clientDebug.logLevel)
+	}
+
+	// Test PublishLineStatusChange behavior with disconnected client
+	// For info level: should return nil (no FSM publishing attempted)
+	err := clientInfo.PublishLineStatusChange(1, "idle", "ringing", nil)
+	if err != nil {
+		t.Errorf("Expected no error for info level when MQTT not connected, got: %v", err)
+	}
+
+	// For debug level: should return error (FSM publishing attempted but not connected)
+	err = clientDebug.PublishLineStatusChange(1, "idle", "ringing", nil)
+	if err == nil {
+		t.Error("Expected error for debug level when MQTT not connected")
+	} else if err.Error() != "MQTT client not connected" {
+		t.Errorf("Expected 'MQTT client not connected' error, got: %v", err)
 	}
 }

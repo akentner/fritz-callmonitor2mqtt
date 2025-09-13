@@ -1,6 +1,9 @@
 package types
 
-import "time"
+import (
+	"strings"
+	"time"
+)
 
 // CallType represents the type of call event
 type CallType string
@@ -16,10 +19,14 @@ const (
 type CallStatus string
 
 const (
-	CallStatusIdle   CallStatus = "idle"
-	CallStatusCall   CallStatus = "call"
-	CallStatusRing   CallStatus = "ring"
-	CallStatusActive CallStatus = "active"
+	CallStatusIdle       CallStatus = "idle"
+	CallStatusRinging    CallStatus = "ringing"
+	CallStatusCalling    CallStatus = "calling"
+	CallStatusTalking    CallStatus = "talking"
+	CallStatusNotReached CallStatus = "notReached"
+	CallStatusMissedCall CallStatus = "missedCall"
+	CallStatusFinished   CallStatus = "finished"
+	CallStatusMessageBox CallStatus = "messageBox"
 )
 
 // CallDirection represents the direction of a call
@@ -32,17 +39,21 @@ const (
 
 // CallEvent represents a single call monitor event from Fritz!Box
 type CallEvent struct {
-	ID         string        `json:"id"` // UUID v7 for tracking calls across states
-	Timestamp  time.Time     `json:"timestamp"`
-	Type       CallType      `json:"type"`
-	Direction  CallDirection `json:"direction"`             // Call direction (inbound/outbound)
-	Line       int           `json:"line"`                  // Line ID
-	Trunk      string        `json:"trunk,omitempty"`       // SIP line ID
-	Extension  string        `json:"extension,omitempty"`   // Internal extension (e.g., "1", "2")
-	Caller     string        `json:"caller,omitempty"`      // Calling number
-	Called     string        `json:"called,omitempty"`      // Called number
-	Duration   int           `json:"duration,omitempty"`    // Duration in seconds (for end events)
-	RawMessage string        `json:"raw_message,omitempty"` // Original Fritz!Box message
+	ID          string        `json:"id"` // UUID v7 for tracking calls across states
+	Timestamp   time.Time     `json:"timestamp"`
+	Type        CallType      `json:"type"`
+	Direction   CallDirection `json:"direction"`              // Call direction (inbound/outbound)
+	Line        int           `json:"line"`                   // Line ID
+	Trunk       string        `json:"trunk,omitempty"`        // SIP line ID
+	Extension   string        `json:"extension,omitempty"`    // Internal extension (e.g., "1", "2")
+	Caller      string        `json:"caller,omitempty"`       // Calling number
+	Called      string        `json:"called,omitempty"`       // Called number
+	CallerMSN   string        `json:"caller_msn,omitempty"`   // MSN if caller matches configured MSNs
+	CalledMSN   string        `json:"called_msn,omitempty"`   // MSN if called matches configured MSNs
+	Duration    int           `json:"duration,omitempty"`     // Duration in seconds (for end events)
+	Status      CallStatus    `json:"status"`                 // Current FSM status
+	FinishState *CallStatus   `json:"finish_state,omitempty"` // Final status before idle (missedCall, notReached, finished)
+	RawMessage  string        `json:"raw_message,omitempty"`  // Original Fritz!Box message
 }
 
 // LineStatus represents the current status of a phone line
@@ -53,6 +64,7 @@ type LineStatus struct {
 	Direction   CallDirection         `json:"direction"`
 	Extension   LineStatusExtension   `json:"extension"`
 	Status      CallStatus            `json:"status"`
+	FinishState *CallStatus           `json:"finish_state,omitempty"` // Final status before idle (missedCall, notReached, finished)
 	Caller      LineStatusParticipant `json:"caller"`
 	Called      LineStatusParticipant `json:"called"`
 	Duration    *int                  `json:"duration,omitempty"`
@@ -90,4 +102,25 @@ func (ch *CallHistory) AddCall(event CallEvent) {
 		ch.Calls = ch.Calls[:ch.MaxSize]
 	}
 	ch.UpdatedAt = time.Now()
+}
+
+// DetectMSN checks if a phone number ends with one of the configured MSNs
+// Returns the matching MSN or empty string if no match found
+func DetectMSN(phoneNumber string, msns []string) string {
+	if phoneNumber == "" {
+		return ""
+	}
+
+	for _, msn := range msns {
+		if msn != "" && strings.HasSuffix(phoneNumber, msn) {
+			return msn
+		}
+	}
+	return ""
+}
+
+// EnrichWithMSNs adds MSN information to a CallEvent based on configured MSNs
+func (ce *CallEvent) EnrichWithMSNs(msns []string) {
+	ce.CallerMSN = DetectMSN(ce.Caller, msns)
+	ce.CalledMSN = DetectMSN(ce.Called, msns)
 }

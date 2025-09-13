@@ -21,6 +21,9 @@ type Config struct {
 
 	// Application settings
 	App AppConfig `mapstructure:"app"`
+
+	// Database settings
+	Database DatabaseConfig `mapstructure:"database"`
 }
 
 // FritzBoxConfig contains Fritz!Box connection settings
@@ -58,6 +61,11 @@ type AppConfig struct {
 	Timezone        string        `mapstructure:"timezone"`
 }
 
+// DatabaseConfig contains database settings
+type DatabaseConfig struct {
+	DataDir string `mapstructure:"data_dir"` // Data directory path
+}
+
 // LoadConfig loads configuration from environment variables and defaults
 func LoadConfig() (*Config, error) {
 	config := &Config{
@@ -88,6 +96,9 @@ func LoadConfig() (*Config, error) {
 			ReconnectDelay:  getEnvDurationOrDefault("FRITZ_CALLMONITOR_APP_RECONNECT_DELAY", 10*time.Second),
 			HealthCheckPort: getEnvIntOrDefault("FRITZ_CALLMONITOR_APP_HEALTH_CHECK_PORT", 8080),
 			Timezone:        getEnvOrDefault("FRITZ_CALLMONITOR_APP_TIMEZONE", "Europe/Berlin"),
+		},
+		Database: DatabaseConfig{
+			DataDir: getEnvOrDefault("FRITZ_CALLMONITOR_DATABASE_DATA_DIR", "./data"),
 		},
 	}
 
@@ -162,6 +173,10 @@ func (c *Config) Validate() error {
 		if _, err := time.LoadLocation(c.App.Timezone); err != nil {
 			return fmt.Errorf("invalid timezone '%s': %w", c.App.Timezone, err)
 		}
+	}
+
+	if c.Database.DataDir == "" {
+		return fmt.Errorf("database data directory cannot be empty")
 	}
 
 	return nil

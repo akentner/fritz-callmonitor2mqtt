@@ -54,6 +54,9 @@ func TestConfigTimezone(t *testing.T) {
 					CallHistorySize: 50,
 					Timezone:        tt.timezone,
 				},
+				Database: DatabaseConfig{
+					DataDir: "./data",
+				},
 			}
 
 			// Test validation

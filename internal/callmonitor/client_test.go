@@ -114,7 +114,7 @@ func TestParseCallEvent(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client := NewClient("test.host", 1012, nil, "49", "30") // Fresh client for each test
+			client := NewClient("test.host", 1012, nil, "49", "30", []string{"990133", "990134"}) // Fresh client for each test
 			result, err := client.parseEvent(tt.input)
 
 			if tt.expectError {
@@ -164,7 +164,7 @@ func TestParseCallEvent(t *testing.T) {
 }
 
 func TestCallLifecycleIDMapping(t *testing.T) {
-	client := NewClient("test.host", 1012, nil, "49", "30")
+	client := NewClient("test.host", 1012, nil, "49", "30", []string{"990133", "990134"})
 
 	// Test full call lifecycle: RING -> CONNECT -> DISCONNECT
 	// This tests that the ID to LineID mapping works correctly
@@ -215,7 +215,7 @@ func TestCallLifecycleIDMapping(t *testing.T) {
 }
 
 func TestParseTimestamp(t *testing.T) {
-	client := NewClient("test.host", 1012, nil, "49", "30")
+	client := NewClient("test.host", 1012, nil, "49", "30", []string{"990133", "990134"})
 
 	tests := []struct {
 		name        string
@@ -264,7 +264,7 @@ func TestParseTimestamp(t *testing.T) {
 }
 
 func TestCallIDToLineIDMapping(t *testing.T) {
-	client := NewClient("test.host", 1012, nil, "49", "30")
+	client := NewClient("test.host", 1012, nil, "49", "30", []string{"990133", "990134"})
 
 	// First, simulate an incoming call (RING) that establishes the ID-to-LineID mapping
 	ringEvent, err := client.parseEvent("09.09.25 13:50:00;RING;0;123456789;987654321;SIP0")
@@ -304,7 +304,7 @@ func TestCallIDToLineIDMapping(t *testing.T) {
 }
 
 func TestMultipleCallIDMappings(t *testing.T) {
-	client := NewClient("test.host", 1012, nil, "49", "30")
+	client := NewClient("test.host", 1012, nil, "49", "30", []string{"990133", "990134"})
 
 	// Simulate multiple concurrent calls
 	// Call 1: RING
@@ -362,7 +362,7 @@ func TestTimezoneHandling(t *testing.T) {
 		t.Fatalf("Failed to load Berlin timezone: %v", err)
 	}
 
-	client := NewClient("test.host", 1012, berlinTZ, "49", "30")
+	client := NewClient("test.host", 1012, berlinTZ, "49", "30", []string{"990133", "990134"})
 
 	// Test parsing timestamp with Berlin timezone
 	result, err := client.parseTimestamp("21.09.25 15:30:45")
@@ -377,7 +377,7 @@ func TestTimezoneHandling(t *testing.T) {
 	}
 
 	// Test with UTC timezone
-	utcClient := NewClient("test.host", 1012, time.UTC, "49", "30")
+	utcClient := NewClient("test.host", 1012, time.UTC, "49", "30", []string{"990133", "990134"})
 	utcResult, err := utcClient.parseTimestamp("21.09.25 15:30:45")
 	if err != nil {
 		t.Fatalf("Failed to parse timestamp with UTC: %v", err)
@@ -389,7 +389,7 @@ func TestTimezoneHandling(t *testing.T) {
 }
 
 func TestCallIDTracking(t *testing.T) {
-	client := NewClient("test.host", 1012, nil, "49", "30")
+	client := NewClient("test.host", 1012, nil, "49", "30", []string{"990133", "990134"})
 
 	// Test RING event generates UUID v7
 	ringEvent, err := client.parseEvent("21.09.25 15:30:45;RING;0;123456789;987654321;SIP0")
@@ -436,7 +436,7 @@ func TestCallIDTracking(t *testing.T) {
 }
 
 func TestUniqueCallIDs(t *testing.T) {
-	client := NewClient("test.host", 1012, nil, "49", "30")
+	client := NewClient("test.host", 1012, nil, "49", "30", []string{"990133", "990134"})
 
 	// Generate multiple RING events to verify unique IDs
 	var callIDs []string
@@ -475,7 +475,7 @@ func TestUniqueCallIDs(t *testing.T) {
 }
 
 func TestUUIDv7Ordering(t *testing.T) {
-	client := NewClient("test.host", 1012, nil, "49", "30")
+	client := NewClient("test.host", 1012, nil, "49", "30", []string{"990133", "990134"})
 
 	// Generate UUIDs with small time delays to test temporal ordering
 	var events []types.CallEvent
