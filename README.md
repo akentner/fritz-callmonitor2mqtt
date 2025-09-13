@@ -11,9 +11,11 @@ A Go backend service that monitors the Fritz!Box callmonitor interface (TCP port
 - **Real-time Call Monitoring**: Connects to Fritz!Box callmonitor interface
 - **MQTT Integration**: Publishes call events to MQTT broker with configurable topics
 - **Line Status Tracking**: Maintains current status for each phone line (idle/ring/active)
-- **Call History**: Keeps track of the last 50 calls in JSON format
+- **Phone Number Name Mapping**: Store and retrieve contact names for phone numbers via RPC-style MQTT interface
+- **Call History**: Keeps track of the last 50 calls in JSON format with caller/called names
 - **SQLite Database**: Persistent storage of call events with versioned migrations
 - **MSN Detection**: Automatically detects Multiple Subscriber Numbers (MSNs) in phone calls
+- **RPC-Style MQTT API**: Manage phone number contacts via MQTT request/response topics
 - **Automatic Reconnection**: Robust connection handling with automatic reconnection
 - **Environment-based Configuration**: Configure via environment variables
 - **Lightweight**: Single binary, minimal dependencies
@@ -23,6 +25,7 @@ A Go backend service that monitors the Fritz!Box callmonitor interface (TCP port
 
 The service publishes to the following MQTT topics (with configurable prefix):
 
+### Call Event Topics
 - `{prefix}/status` - Service availability with Birth/Last Will (retained)
 - `{prefix}/line/{line_id}/status` - Current status of each phone line (retained)
 - `{prefix}/line/{line_id}/last_event` - Last event for each line (retained)
@@ -32,6 +35,10 @@ The service publishes to the following MQTT topics (with configurable prefix):
   - `call` - Outgoing call started  
   - `connect` - Call connected/answered
   - `disconnect` - Call ended
+
+### Phone Number Management (RPC-Style)
+- `{prefix}/phone_number/request` - Submit phone number management requests
+- `{prefix}/phone_number/response` - Receive responses for phone number operations
 
 ### Call Tracking with UUID v7
 Each call receives a unique UUID v7 identifier that:
@@ -45,6 +52,26 @@ The service implements MQTT Birth and Last Will Testament:
 - **Birth Message**: `{"state":"online", "last_changed":"2025-09-09T10:30:45Z"}` on connect
 - **Last Will**: `{"state":"offline", "last_changed":"2025-09-09T10:30:45Z"}` on unexpected disconnect  
 - **Graceful Shutdown**: Explicit offline message before clean disconnect
+
+### Phone Number Name Mapping
+The service includes a contact management system that allows associating phone numbers with names:
+- **Automatic Name Resolution**: Call events automatically include caller/called names when available
+- **RPC-Style MQTT Interface**: Manage contacts via MQTT request/response pattern
+- **Persistent Storage**: Contact data stored in SQLite database
+- **Search Capabilities**: Find contacts by name pattern or phone number
+
+**Enhanced Call Events with Names:**
+```json
+{
+  "id": "01933e88-a140-7d2c-b0a8-123456789abc",
+  "caller": "+1234567890",
+  "called": "+0987654321",
+  "caller_name": "John Doe",
+  "called_name": "Jane Smith",
+  "type": "call",
+  "direction": "outbound"
+}
+```
 
 ## Quick Start
 
@@ -188,6 +215,33 @@ FRITZ_CALLMONITOR_MQTT_BROKER=mqtt.home.lan \
 FRITZ_CALLMONITOR_APP_TIMEZONE=Europe/Vienna \
 ./fritz-callmonitor2mqtt
 ```
+
+## Phone Number Management
+
+The service includes a complete contact management system accessible via RPC-style MQTT interface:
+
+### Quick Examples
+
+```bash
+# Python client
+python3 examples/phone-rpc-client.py set "+1234567890" "John Doe"
+python3 examples/phone-rpc-client.py get "+1234567890"
+python3 examples/phone-rpc-client.py list
+
+# Node.js client
+node examples/phone-rpc-client.js set "+1234567890" "John Doe"
+node examples/phone-rpc-client.js search "John"
+
+# Shell script (using mosquitto tools)
+./examples/phone-rpc-shell.sh set "+1234567890" "John Doe"
+./examples/phone-rpc-shell.sh monitor  # Watch all RPC responses
+```
+
+### Documentation
+
+- **[Phone Number RPC API](docs/PHONE_NUMBER_RPC.md)** - Complete API documentation
+- **[Examples](examples/README.md)** - Client implementations and usage examples
+- **[Home Assistant Integration](examples/home-assistant/)** - Ready-to-use HA configuration
 
 ## Development
 

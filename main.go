@@ -70,7 +70,13 @@ func main() {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
-	// Initialize MQTT client
+	// Initialize database client first
+	dbClient, err := database.NewClient(cfg.Database.DataDir)
+	if err != nil {
+		log.Fatalf("Failed to create database client: %v", err)
+	}
+
+	// Initialize MQTT client with database client
 	mqttClient := mqtt.NewClient(
 		cfg.MQTT.Broker,
 		cfg.MQTT.Port,
@@ -83,13 +89,8 @@ func main() {
 		cfg.MQTT.KeepAlive,
 		cfg.MQTT.ConnectTimeout,
 		cfg.App.LogLevel,
+		dbClient,
 	)
-
-	// Initialize database client
-	dbClient, err := database.NewClient(cfg.Database.DataDir)
-	if err != nil {
-		log.Fatalf("Failed to create database client: %v", err)
-	}
 
 	// Connect to database
 	if err := dbClient.Connect(); err != nil {
@@ -109,6 +110,9 @@ func main() {
 		log.Fatalf("Failed to load timezone: %v", err)
 	}
 	callmonitorClient := callmonitor.NewClient(cfg.FritzBox.Host, cfg.FritzBox.Port, timezone, cfg.PBX.CountryCode, cfg.PBX.LocalAreaCode, cfg.PBX.MSN)
+
+	// Set phone number lookup in callmonitor client
+	callmonitorClient.SetPhoneNumberLookup(dbClient)
 
 	// Initialize call manager with MQTT and database integration
 	callManager := types.NewCallManagerWithMQTTAndDB(mqttClient, dbClient, func(line int, oldStatus, newStatus types.CallStatus, event *types.CallEvent) {

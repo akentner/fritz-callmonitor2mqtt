@@ -13,6 +13,11 @@ import (
 	"fritz-callmonitor2mqtt/pkg/types"
 )
 
+// PhoneNumberLookup interface for resolving phone numbers to names
+type PhoneNumberLookup interface {
+	GetPhoneNumberName(phoneNumber string) (string, error)
+}
+
 // Client represents a Fritz!Box callmonitor client
 type Client struct {
 	host              string
@@ -26,6 +31,7 @@ type Client struct {
 	countryCode       string
 	localAreaCode     string
 	msns              []string                    // Configured MSNs for detection
+	phoneNumberLookup PhoneNumberLookup           // Optional phone number name lookup
 	lineIdToTrunk     map[int]string              // Maps line ID to Line Name
 	lineIdToDirection map[int]types.CallDirection // Maps line ID to Line Direction
 	lineIdToCaller    map[int]string              // Maps line ID to Caller
@@ -54,6 +60,11 @@ func NewClient(host string, port int, timezone *time.Location, countryCode strin
 		lineIdToCalled:    make(map[int]string),
 		lineIdToCallID:    make(map[int]string),
 	}
+}
+
+// SetPhoneNumberLookup sets the phone number lookup interface
+func (c *Client) SetPhoneNumberLookup(lookup PhoneNumberLookup) {
+	c.phoneNumberLookup = lookup
 }
 
 // Connect establishes connection to Fritz!Box callmonitor
@@ -226,6 +237,9 @@ func (c *Client) parseEventRing(parts []string, timestamp time.Time, lineID int,
 	// Enrich with MSN information
 	event.EnrichWithMSNs(c.msns)
 
+	// Enrich with phone number names
+	c.enrichEventWithNames(event)
+
 	// Store mapping for later DISCONNECT events
 	if event.Trunk != "" {
 		c.lineIdToTrunk[event.Line] = event.Trunk
@@ -268,6 +282,9 @@ func (c *Client) parseEventCall(parts []string, timestamp time.Time, line int, r
 
 	// Enrich with MSN information
 	event.EnrichWithMSNs(c.msns)
+
+	// Enrich with phone number names
+	c.enrichEventWithNames(event)
 
 	// Store mapping for later DISCONNECT events
 	if event.Trunk != "" {
@@ -324,6 +341,9 @@ func (c *Client) parseEventConnect(parts []string, timestamp time.Time, line int
 
 	// Enrich with MSN information
 	event.EnrichWithMSNs(c.msns)
+
+	// Enrich with phone number names
+	c.enrichEventWithNames(event)
 
 	return event, nil
 }
@@ -383,6 +403,9 @@ func (c *Client) parseEventDisconnect(parts []string, timestamp time.Time, line 
 	// Enrich with MSN information
 	event.EnrichWithMSNs(c.msns)
 
+	// Enrich with phone number names
+	c.enrichEventWithNames(event)
+
 	return event, nil
 }
 
@@ -404,6 +427,32 @@ func (c *Client) normalizePhoneNumber(phoneNumber string) string {
 	}
 
 	return phoneNumber
+}
+
+// lookupPhoneNumberName retrieves the name for a phone number if available
+func (c *Client) lookupPhoneNumberName(phoneNumber string) string {
+	if c.phoneNumberLookup == nil || phoneNumber == "" {
+		return ""
+	}
+
+	name, err := c.phoneNumberLookup.GetPhoneNumberName(phoneNumber)
+	if err != nil {
+		// Log error but don't fail event processing
+		// TODO: Add proper logging interface
+		return ""
+	}
+
+	return name
+}
+
+// enrichEventWithNames adds caller and called names to the event
+func (c *Client) enrichEventWithNames(event *types.CallEvent) {
+	if event.Caller != "" {
+		event.CallerName = c.lookupPhoneNumberName(event.Caller)
+	}
+	if event.Called != "" {
+		event.CalledName = c.lookupPhoneNumberName(event.Called)
+	}
 }
 
 // parseTimestamp parses Fritz!Box timestamp format

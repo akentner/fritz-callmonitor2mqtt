@@ -375,3 +375,207 @@ func (c *Client) GetCallsByLine(line int, limit int) ([]Call, error) {
 
 	return calls, nil
 }
+
+// PhoneNumber represents a phone number with an associated name
+type PhoneNumber struct {
+	PhoneNumber string    `db:"phone_number"`
+	Name        *string   `db:"name"`
+	CreatedAt   time.Time `db:"created_at"`
+	UpdatedAt   time.Time `db:"updated_at"`
+}
+
+// InsertPhoneNumber inserts or updates a phone number with its associated name
+func (c *Client) InsertPhoneNumber(phoneNumber, name string) error {
+	if c.db == nil {
+		return fmt.Errorf("database not connected")
+	}
+
+	query := `INSERT INTO phone_numbers (phone_number, name, updated_at) 
+		VALUES (?, ?, CURRENT_TIMESTAMP)
+		ON CONFLICT(phone_number) 
+		DO UPDATE SET name = excluded.name, updated_at = CURRENT_TIMESTAMP`
+
+	var namePtr *string
+	if name != "" {
+		namePtr = &name
+	}
+
+	_, err := c.db.Exec(query, phoneNumber, namePtr)
+	if err != nil {
+		return fmt.Errorf("failed to insert/update phone number: %w", err)
+	}
+
+	return nil
+}
+
+// UpdatePhoneNumber updates the name for an existing phone number
+func (c *Client) UpdatePhoneNumber(phoneNumber, name string) error {
+	if c.db == nil {
+		return fmt.Errorf("database not connected")
+	}
+
+	var namePtr *string
+	if name != "" {
+		namePtr = &name
+	}
+
+	query := `UPDATE phone_numbers SET name = ?, updated_at = CURRENT_TIMESTAMP WHERE phone_number = ?`
+
+	result, err := c.db.Exec(query, namePtr, phoneNumber)
+	if err != nil {
+		return fmt.Errorf("failed to update phone number: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return fmt.Errorf("phone number not found: %s", phoneNumber)
+	}
+
+	return nil
+}
+
+// GetPhoneNumber retrieves a phone number and its associated name
+func (c *Client) GetPhoneNumber(phoneNumber string) (*PhoneNumber, error) {
+	if c.db == nil {
+		return nil, fmt.Errorf("database not connected")
+	}
+
+	query := `SELECT phone_number, name, created_at, updated_at FROM phone_numbers WHERE phone_number = ?`
+
+	row := c.db.QueryRow(query, phoneNumber)
+
+	var pn PhoneNumber
+	err := row.Scan(&pn.PhoneNumber, &pn.Name, &pn.CreatedAt, &pn.UpdatedAt)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("phone number not found: %s", phoneNumber)
+		}
+		return nil, fmt.Errorf("failed to scan phone number: %w", err)
+	}
+
+	return &pn, nil
+}
+
+// GetPhoneNumberName retrieves only the name for a phone number (optimized lookup)
+func (c *Client) GetPhoneNumberName(phoneNumber string) (string, error) {
+	if c.db == nil {
+		return "", fmt.Errorf("database not connected")
+	}
+
+	query := `SELECT name FROM phone_numbers WHERE phone_number = ?`
+
+	var name *string
+	err := c.db.QueryRow(query, phoneNumber).Scan(&name)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return "", nil // No name found, return empty string
+		}
+		return "", fmt.Errorf("failed to get phone number name: %w", err)
+	}
+
+	if name == nil {
+		return "", nil
+	}
+
+	return *name, nil
+}
+
+// GetAllPhoneNumbers retrieves all phone numbers with their names, ordered by phone number
+func (c *Client) GetAllPhoneNumbers(limit int) ([]PhoneNumber, error) {
+	if c.db == nil {
+		return nil, fmt.Errorf("database not connected")
+	}
+
+	query := `SELECT phone_number, name, created_at, updated_at FROM phone_numbers 
+		ORDER BY phone_number ASC LIMIT ?`
+
+	rows, err := c.db.Query(query, limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query phone numbers: %w", err)
+	}
+	defer rows.Close()
+
+	var phoneNumbers []PhoneNumber
+	for rows.Next() {
+		var pn PhoneNumber
+		err := rows.Scan(&pn.PhoneNumber, &pn.Name, &pn.CreatedAt, &pn.UpdatedAt)
+
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan phone number: %w", err)
+		}
+
+		phoneNumbers = append(phoneNumbers, pn)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating phone numbers: %w", err)
+	}
+
+	return phoneNumbers, nil
+}
+
+// DeletePhoneNumber removes a phone number and its associated name
+func (c *Client) DeletePhoneNumber(phoneNumber string) error {
+	if c.db == nil {
+		return fmt.Errorf("database not connected")
+	}
+
+	query := `DELETE FROM phone_numbers WHERE phone_number = ?`
+
+	result, err := c.db.Exec(query, phoneNumber)
+	if err != nil {
+		return fmt.Errorf("failed to delete phone number: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("failed to get rows affected: %w", err)
+	}
+
+	if rowsAffected == 0 {
+		return fmt.Errorf("phone number not found: %s", phoneNumber)
+	}
+
+	return nil
+}
+
+// SearchPhoneNumbersByName searches for phone numbers by name (partial match)
+func (c *Client) SearchPhoneNumbersByName(namePattern string, limit int) ([]PhoneNumber, error) {
+	if c.db == nil {
+		return nil, fmt.Errorf("database not connected")
+	}
+
+	query := `SELECT phone_number, name, created_at, updated_at FROM phone_numbers 
+		WHERE name LIKE ? ORDER BY name ASC LIMIT ?`
+
+	pattern := "%" + namePattern + "%"
+	rows, err := c.db.Query(query, pattern, limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to search phone numbers by name: %w", err)
+	}
+	defer rows.Close()
+
+	var phoneNumbers []PhoneNumber
+	for rows.Next() {
+		var pn PhoneNumber
+		err := rows.Scan(&pn.PhoneNumber, &pn.Name, &pn.CreatedAt, &pn.UpdatedAt)
+
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan phone number: %w", err)
+		}
+
+		phoneNumbers = append(phoneNumbers, pn)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating phone numbers: %w", err)
+	}
+
+	return phoneNumbers, nil
+}
