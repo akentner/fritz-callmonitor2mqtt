@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"log"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // CallManager demonstrates how to use the LineStateMachine for call management
@@ -11,6 +13,7 @@ type CallManager struct {
 	lineStateMachine *LineStateMachine
 	onStatusChange   func(line int, oldStatus, newStatus CallStatus, event *CallEvent)
 	mqttPublisher    MQTTPublisher
+	dbPersister      DatabasePersister
 }
 
 // NewCallManager creates a new call manager with FSM
@@ -37,6 +40,30 @@ func NewCallManagerWithMQTT(mqttPublisher MQTTPublisher, onStatusChange func(lin
 	}
 
 	cm.lineStateMachine = NewLineStateMachineWithMQTT(mqttPublisher, func(line int, oldState, newState CallStatus) {
+		log.Printf("Line %d: %s -> %s", line, oldState, newState)
+		if cm.onStatusChange != nil {
+			cm.onStatusChange(line, oldState, newState, nil)
+		}
+		// For timeout transitions, also publish line status update to MQTT
+		if oldState != newState && cm.mqttPublisher != nil {
+			if err := cm.mqttPublisher.PublishTimeoutStatusUpdate(line, newState); err != nil {
+				log.Printf("Failed to publish timeout status update: %v", err)
+			}
+		}
+	})
+
+	return cm
+}
+
+// NewCallManagerWithMQTTAndDB creates a new call manager with MQTT and database persistence support
+func NewCallManagerWithMQTTAndDB(mqttPublisher MQTTPublisher, dbPersister DatabasePersister, onStatusChange func(line int, oldStatus, newStatus CallStatus, event *CallEvent)) *CallManager {
+	cm := &CallManager{
+		onStatusChange: onStatusChange,
+		mqttPublisher:  mqttPublisher,
+		dbPersister:    dbPersister,
+	}
+
+	cm.lineStateMachine = NewLineStateMachineWithMQTTAndDB(mqttPublisher, dbPersister, func(line int, oldState, newState CallStatus) {
 		log.Printf("Line %d: %s -> %s", line, oldState, newState)
 		if cm.onStatusChange != nil {
 			cm.onStatusChange(line, oldState, newState, nil)
@@ -79,6 +106,11 @@ func (cm *CallManager) ProcessEvent(event *CallEvent) *CallEvent {
 	}
 
 	return event
+}
+
+// GetLineCallID returns the current call UUID for a specific line
+func (cm *CallManager) GetLineCallID(line int) *uuid.UUID {
+	return cm.lineStateMachine.GetLineCallID(line)
 }
 
 // validateEvent performs basic validation on call events

@@ -3,6 +3,8 @@ package types
 import (
 	"fmt"
 	"sync"
+
+	"github.com/google/uuid"
 )
 
 // LineStateMachine manages FSMs for multiple phone lines
@@ -11,6 +13,7 @@ type LineStateMachine struct {
 	machines      map[int]*CallStateMachine
 	onStateChange func(line int, oldState, newState CallStatus)
 	mqttPublisher MQTTPublisher
+	dbPersister   DatabasePersister
 }
 
 // NewLineStateMachine creates a new line state machine manager
@@ -30,6 +33,16 @@ func NewLineStateMachineWithMQTT(mqttPublisher MQTTPublisher, onStateChange func
 	}
 }
 
+// NewLineStateMachineWithMQTTAndDB creates a new line state machine with MQTT and database persistence
+func NewLineStateMachineWithMQTTAndDB(mqttPublisher MQTTPublisher, dbPersister DatabasePersister, onStateChange func(line int, oldState, newState CallStatus)) *LineStateMachine {
+	return &LineStateMachine{
+		machines:      make(map[int]*CallStateMachine),
+		onStateChange: onStateChange,
+		mqttPublisher: mqttPublisher,
+		dbPersister:   dbPersister,
+	}
+}
+
 // ProcessCallEvent processes a call event and updates the appropriate line FSM
 func (lsm *LineStateMachine) ProcessCallEvent(event *CallEvent) CallStatus {
 	lsm.mu.Lock()
@@ -38,7 +51,13 @@ func (lsm *LineStateMachine) ProcessCallEvent(event *CallEvent) CallStatus {
 	// Get or create FSM for this line
 	fsm, exists := lsm.machines[event.Line]
 	if !exists {
-		if lsm.mqttPublisher != nil {
+		if lsm.dbPersister != nil && lsm.mqttPublisher != nil {
+			fsm = NewCallStateMachineWithMQTTAndDB(event.Line, lsm.mqttPublisher, lsm.dbPersister, func(oldState, newState CallStatus) {
+				if lsm.onStateChange != nil {
+					lsm.onStateChange(event.Line, oldState, newState)
+				}
+			})
+		} else if lsm.mqttPublisher != nil {
 			fsm = NewCallStateMachineWithMQTT(event.Line, lsm.mqttPublisher, func(oldState, newState CallStatus) {
 				if lsm.onStateChange != nil {
 					lsm.onStateChange(event.Line, oldState, newState)
@@ -96,6 +115,17 @@ func (lsm *LineStateMachine) GetLineFinishState(line int) *CallStatus {
 
 	if fsm, exists := lsm.machines[line]; exists {
 		return fsm.GetFinishState()
+	}
+	return nil
+}
+
+// GetLineCallID returns the current call UUID for a specific line
+func (lsm *LineStateMachine) GetLineCallID(line int) *uuid.UUID {
+	lsm.mu.RLock()
+	defer lsm.mu.RUnlock()
+
+	if fsm, exists := lsm.machines[line]; exists {
+		return fsm.GetCallID()
 	}
 	return nil
 }

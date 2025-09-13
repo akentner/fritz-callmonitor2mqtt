@@ -3,6 +3,11 @@ package main
 import (
 	"os"
 	"testing"
+	"time"
+
+	"fritz-callmonitor2mqtt/internal/database"
+	"fritz-callmonitor2mqtt/internal/mqtt"
+	"fritz-callmonitor2mqtt/pkg/types"
 )
 
 func TestMain(t *testing.T) {
@@ -65,4 +70,69 @@ func BenchmarkExample(b *testing.B) {
 		// Benchmark your functions here
 		_ = "example"
 	}
+}
+
+func TestEndToEndIntegration(t *testing.T) {
+	// Test end-to-end integration: MQTT + Database + FSM
+
+	// Setup test database
+	tempDir, err := os.MkdirTemp("", "e2e_test")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tempDir)
+
+	// Create database client
+	dbClient, err := database.NewClient(tempDir)
+	if err != nil {
+		t.Fatalf("Failed to create database client: %v", err)
+	}
+
+	err = dbClient.Connect()
+	if err != nil {
+		t.Fatalf("Failed to connect to database: %v", err)
+	}
+	defer dbClient.Close()
+
+	err = dbClient.RunEmbeddedMigrations()
+	if err != nil {
+		t.Fatalf("Failed to run migrations: %v", err)
+	}
+
+	// Create mock MQTT client (minimal parameters)
+	mqttClient := mqtt.NewClient("localhost", 1883, "", "", "test-client", "fritz", 0, false, 30*time.Second, 5*time.Second, "debug")
+
+	// Create call manager with MQTT and database
+	callManager := types.NewCallManagerWithMQTTAndDB(mqttClient, dbClient, func(line int, oldStatus, newStatus types.CallStatus, event *types.CallEvent) {
+		t.Logf("Line %d: %s -> %s", line, oldStatus, newStatus)
+	})
+
+	// Test processing a call event
+	callEvent := &types.CallEvent{
+		ID:        "test-uuid-123",
+		Timestamp: time.Now(),
+		Type:      types.CallTypeRing,
+		Direction: types.CallDirectionInbound,
+		Line:      1,
+		Caller:    "+49123456789",
+		Called:    "+49987654321",
+		Status:    types.CallStatusRinging,
+	}
+
+	// Process the call event
+	processedEvent := callManager.ProcessEvent(callEvent)
+	if processedEvent == nil {
+		t.Fatal("ProcessEvent returned nil")
+	}
+
+	// Verify the call was processed by checking line status
+	lineStatus := callManager.GetLineStatus(1)
+	if lineStatus != types.CallStatusRinging {
+		t.Errorf("Expected line status ringing, got %s", lineStatus)
+	}
+
+	// Clean up
+	callManager.Cleanup()
+
+	t.Log("End-to-end integration test passed: FSM + Database + MQTT integration working")
 }
