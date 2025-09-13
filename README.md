@@ -12,6 +12,8 @@ A Go backend service that monitors the Fritz!Box callmonitor interface (TCP port
 - **MQTT Integration**: Publishes call events to MQTT broker with configurable topics
 - **Line Status Tracking**: Maintains current status for each phone line (idle/ring/active)
 - **Call History**: Keeps track of the last 50 calls in JSON format
+- **SQLite Database**: Persistent storage of call events with versioned migrations
+- **MSN Detection**: Automatically detects Multiple Subscriber Numbers (MSNs) in phone calls
 - **Automatic Reconnection**: Robust connection handling with automatic reconnection
 - **Environment-based Configuration**: Configure via environment variables
 - **Lightweight**: Single binary, minimal dependencies

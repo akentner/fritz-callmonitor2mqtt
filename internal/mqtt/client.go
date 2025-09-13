@@ -24,6 +24,7 @@ type Client struct {
 	retain         bool
 	keepAlive      time.Duration
 	connectTimeout time.Duration
+	logLevel       string
 
 	// MQTT client
 	client mqtt.Client
@@ -38,7 +39,7 @@ type Client struct {
 }
 
 // NewClient creates a new MQTT client
-func NewClient(broker string, port int, username, password, clientID, topicPrefix string, qos byte, retain bool, keepAlive, connectTimeout time.Duration) *Client {
+func NewClient(broker string, port int, username, password, clientID, topicPrefix string, qos byte, retain bool, keepAlive, connectTimeout time.Duration, logLevel string) *Client {
 	return &Client{
 		broker:                 broker,
 		port:                   port,
@@ -50,6 +51,7 @@ func NewClient(broker string, port int, username, password, clientID, topicPrefi
 		retain:                 retain,
 		keepAlive:              keepAlive,
 		connectTimeout:         connectTimeout,
+		logLevel:               logLevel,
 		lineStatuses:           make(map[string]*types.LineStatus),
 		lineStatusExtensions:   make(map[string]*types.LineStatusExtension),
 		lineStatusParticipants: make(map[string]*types.LineStatusParticipant),
@@ -179,16 +181,27 @@ func (c *Client) PublishCallEvent(event types.CallEvent) error {
 	lineKey := fmt.Sprintf("%s_%d", event.Trunk, event.Line)
 	lineStatus := c.getOrCreateLineStatus(lineKey, event)
 
-	// Update status based on call type
-	switch event.Type {
-	case types.CallTypeRing:
-		lineStatus.Status = types.CallStatusRing
-	case types.CallTypeCall:
-		lineStatus.Status = types.CallStatusCall
-	case types.CallTypeConnect:
-		lineStatus.Status = types.CallStatusActive
-	case types.CallTypeDisconnect:
-		lineStatus.Status = types.CallStatusIdle
+	// Use FSM status if available, otherwise fall back to call type mapping
+	if event.Status != "" {
+		lineStatus.Status = event.Status
+	} else {
+		// Fallback for events without FSM processing
+		switch event.Type {
+		case types.CallTypeRing:
+			lineStatus.Status = types.CallStatusRinging
+		case types.CallTypeCall:
+			lineStatus.Status = types.CallStatusCalling
+		case types.CallTypeConnect:
+			lineStatus.Status = types.CallStatusTalking
+		case types.CallTypeDisconnect:
+			lineStatus.Status = types.CallStatusIdle
+		}
+	}
+
+	// Update finish state from FSM
+	lineStatus.FinishState = event.FinishState
+
+	if event.Type == types.CallTypeDisconnect {
 		lineStatus.Duration = &event.Duration
 	}
 
@@ -392,4 +405,128 @@ func (c *Client) publishBirthMessage() error {
 
 	log.Printf("Publishing birth message to topic '%s'", topic)
 	return c.publish(topic, payload)
+}
+
+// PublishLineStatusChange publishes FSM status changes via MQTT
+func (c *Client) PublishLineStatusChange(line int, oldStatus, newStatus types.CallStatus, event *types.CallEvent) error {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	// Only publish FSM debug topics when log level is debug
+	if c.logLevel == "debug" {
+		if !c.connected {
+			return fmt.Errorf("MQTT client not connected")
+		}
+
+		// Create status change message
+		msg := types.LineStatusChangeMessage{
+			Line:      line,
+			OldStatus: oldStatus,
+			NewStatus: newStatus,
+			Timestamp: time.Now().Format(time.RFC3339),
+			Event:     event,
+		}
+
+		// Determine reason for status change
+		if event != nil {
+			msg.Reason = "event"
+		} else {
+			msg.Reason = "timeout"
+		}
+
+		// Publish to line-specific FSM status topic
+		topic := fmt.Sprintf("%s/fsm/line/%d/status_change", c.topicPrefix, line)
+		payload, err := json.Marshal(msg)
+		if err != nil {
+			return fmt.Errorf("failed to marshal FSM status change: %w", err)
+		}
+
+		if err := c.publish(topic, payload); err != nil {
+			return fmt.Errorf("failed to publish FSM status change: %w", err)
+		}
+
+		// Also publish current FSM status
+		return c.publishFSMStatus(line, newStatus, event)
+	}
+
+	// When not in debug mode, FSM status changes are not published to debug topics
+	return nil
+}
+
+// publishFSMStatus publishes the current FSM status
+func (c *Client) publishFSMStatus(line int, status types.CallStatus, lastEvent *types.CallEvent) error {
+	msg := types.FSMStatusMessage{
+		Line:      line,
+		Status:    status,
+		Timestamp: time.Now().Format(time.RFC3339),
+	}
+
+	// Add last event info if available
+	if lastEvent != nil {
+		msg.LastEventType = lastEvent.Type
+		msg.LastEventTimestamp = lastEvent.Timestamp.Format(time.RFC3339)
+	}
+
+	// Determine valid transitions based on current status
+	msg.ValidTransitions = c.getValidTransitionsForStatus(status)
+
+	// Check if timeout is active
+	msg.IsTimeoutActive = status == types.CallStatusNotReached ||
+		status == types.CallStatusMissedCall ||
+		status == types.CallStatusFinished
+
+	topic := fmt.Sprintf("%s/fsm/line/%d/status", c.topicPrefix, line)
+	payload, err := json.Marshal(msg)
+	if err != nil {
+		return fmt.Errorf("failed to marshal FSM status: %w", err)
+	}
+
+	return c.publish(topic, payload)
+}
+
+// PublishTimeoutStatusUpdate publishes a line status update for timeout transitions
+func (c *Client) PublishTimeoutStatusUpdate(line int, newStatus types.CallStatus) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if !c.connected {
+		return fmt.Errorf("MQTT client not connected")
+	}
+
+	// Find existing line status and update it
+	var lineStatus *types.LineStatus
+	for _, status := range c.lineStatuses {
+		if status.Line == line {
+			lineStatus = status
+			break
+		}
+	}
+
+	if lineStatus == nil {
+		// No existing line status found, skip update
+		return nil
+	}
+
+	// Update status from FSM timeout transition
+	lineStatus.Status = newStatus
+	lineStatus.LastUpdated = time.Now()
+
+	// Publish updated line status
+	return c.publishLineStatus(lineStatus)
+}
+
+// getValidTransitionsForStatus returns valid transitions for a given status
+func (c *Client) getValidTransitionsForStatus(status types.CallStatus) []types.CallType {
+	switch status {
+	case types.CallStatusIdle:
+		return []types.CallType{types.CallTypeRing, types.CallTypeCall}
+	case types.CallStatusRinging:
+		return []types.CallType{types.CallTypeConnect, types.CallTypeDisconnect}
+	case types.CallStatusCalling:
+		return []types.CallType{types.CallTypeConnect, types.CallTypeDisconnect}
+	case types.CallStatusTalking:
+		return []types.CallType{types.CallTypeDisconnect}
+	default:
+		return []types.CallType{} // Final states have no valid transitions
+	}
 }
