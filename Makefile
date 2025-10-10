@@ -16,7 +16,7 @@ DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 # Build flags
 LDFLAGS=-ldflags "-X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.date=$(DATE)"
 
-.PHONY: build test test-unit test-integration test-all lint lint-fix lint-yaml lint-actions lint-all lint-fix-all fix-errcheck pre-commit fmt clean clean-all run deps deps-update deps-check deps-clean tools tools-venv cache-info help install build-all build-cross-platform release-check release-snapshot release-dry-run
+.PHONY: build test test-unit test-integration test-all lint lint-fix lint-yaml lint-actions lint-all lint-fix-all fix-errcheck pre-commit init status fmt clean clean-all run deps deps-update deps-check deps-clean tools tools-venv cache-info help install build-all build-cross-platform release-check release-snapshot release-dry-run
 
 # Default target
 all: test build
@@ -120,6 +120,56 @@ lint-actions:
 lint-all: lint lint-yaml lint-actions
 	@echo "✅ All linting completed"
 
+# Initialize development environment
+init: tools
+	@echo "🚀 Initializing development environment..."
+	@echo ""
+	@echo "📦 Installing pre-commit hook..."
+	@if [ -d ".git" ]; then \
+		ln -sf ../../scripts/pre-commit.sh .git/hooks/pre-commit && \
+		chmod +x .git/hooks/pre-commit && \
+		echo "✅ Pre-commit hook installed"; \
+	else \
+		echo "⚠️  Not a git repository, skipping pre-commit hook"; \
+	fi
+	@echo ""
+	@echo "🔧 Running initial checks..."
+	@$(MAKE) --no-print-directory fmt || echo "⚠️  Code formatting issues found - run 'make fmt'"
+	@echo ""
+	@echo "📊 Environment status:"
+	@echo -n "Go version: " && go version 2>/dev/null || echo "Go not found"
+	@echo -n "golangci-lint: " && (which golangci-lint > /dev/null && echo "✅ installed") || echo "❌ not found (will install with tools)"
+	@echo -n "yamllint: " && (which yamllint > /dev/null && echo "✅ installed") || echo "❌ not found (will install with tools)"
+	@echo ""
+	@echo "🎉 Development environment initialized!"
+	@echo ""
+	@echo "🚀 Quick start:"
+	@echo "  make help          - Show all available targets"
+	@echo "  make pre-commit    - Run pre-commit checks manually"
+	@echo "  make lint-fix-all  - Auto-fix common linting issues"
+	@echo "  make test          - Run tests"
+	@echo "  make build         - Build the application"
+	@echo ""
+
+# Quick development environment check
+status:
+	@echo "📊 Development Environment Status:"
+	@echo ""
+	@echo "🔧 Tools:"
+	@echo -n "  Go: " && go version 2>/dev/null || echo "❌ not found"
+	@echo -n "  golangci-lint: " && (which golangci-lint > /dev/null || [ -f ~/go/bin/golangci-lint ]) && echo "✅ installed" || echo "❌ not found"
+	@echo -n "  yamllint: " && (which yamllint > /dev/null && echo "✅ installed") || echo "❌ not found"
+	@echo -n "  actionlint: " && (which actionlint > /dev/null && echo "✅ installed") || echo "❌ not found"
+	@echo ""
+	@echo "🪝 Git Hooks:"
+	@if [ -f ".git/hooks/pre-commit" ]; then \
+		echo "  pre-commit: ✅ installed"; \
+	else \
+		echo "  pre-commit: ❌ not installed (run 'make init')"; \
+	fi
+	@echo ""
+	@$(MAKE) --no-print-directory cache-info
+
 # Pre-commit checks
 pre-commit: fmt lint-all test-unit
 	@echo "🔍 Running pre-commit checks..."
@@ -203,8 +253,8 @@ tools:
 	$(GOGET) github.com/golangci/golangci-lint/cmd/golangci-lint@latest
 	$(GOGET) github.com/goreleaser/goreleaser/v2@latest
 	@echo "🔧 Installing YAML and GitHub Actions linting tools..."
-	@which yamllint > /dev/null || (echo "Installing yamllint via system package manager..." && sudo apt-get update && sudo apt-get install -y yamllint)
-	@which actionlint > /dev/null || (echo "Installing actionlint..." && bash <(curl https://raw.githubusercontent.com/rhymond/actionlint/main/scripts/download-actionlint.bash))
+	@which yamllint > /dev/null || { echo "Installing yamllint via system package manager..." && sudo apt-get update && sudo apt-get install -y yamllint; }
+	@which actionlint > /dev/null || { echo "Installing actionlint..." && curl -sSfL https://raw.githubusercontent.com/rhymond/actionlint/main/scripts/download-actionlint.bash | bash; }
 	@echo "✅ Development tools installed successfully"
 
 # Install tools with virtual environment (alternative method)
@@ -279,6 +329,11 @@ dev-mqtt-listen: dev-config
 help:
 	@echo "Available targets:"
 	@echo ""
+	@echo "🚀 Getting Started:"
+	@echo "  init           Initialize development environment"
+	@echo "  status         Check development environment status"
+	@echo "  help           Show this help message"
+	@echo ""
 	@echo "Building & Running:"
 	@echo "  build          Build the binary"
 	@echo "  run            Build and run the application"
@@ -297,11 +352,14 @@ help:
 	@echo "  test-all       Run all tests including integration"
 	@echo "  test-coverage  Run tests with coverage report"
 	@echo "  bench          Run benchmarks"
+	@echo "  pre-commit     Run pre-commit checks manually"
 	@echo "  lint           Run Go linter"
 	@echo "  lint-fix       Run Go linter with auto-fixes"
 	@echo "  lint-yaml      Run YAML linter"
 	@echo "  lint-actions   Run GitHub Actions linter"
 	@echo "  lint-all       Run all linters (Go, YAML, Actions)"
+	@echo "  lint-fix-all   Auto-fix all common linting issues"
+	@echo "  fix-errcheck   Fix errcheck violations automatically"
 	@echo "  fmt            Format code"
 	@echo ""
 	@echo "Dependencies & Tools:"
