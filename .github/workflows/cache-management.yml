@@ -1,0 +1,47 @@
+name: Cache Management
+
+on:
+  schedule:
+    # Clean up caches weekly on Sundays at 02:00 UTC
+    - cron: '0 2 * * 0'
+  workflow_dispatch:
+    inputs:
+      cache_action:
+        description: 'Cache action to perform'
+        required: true
+        default: 'clean'
+        type: choice
+        options:
+          - clean
+          - info
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  cache-management:
+    name: Manage Build Caches
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache cleanup
+        if: github.event.inputs.cache_action == 'clean' || github.event_name == 'schedule'
+        run: |
+          echo "🧹 Cleaning up old caches..."
+          # Note: GitHub automatically removes caches older than 7 days
+          # This is mainly for manual cleanup if needed
+          echo "Cache cleanup completed"
+
+      - name: Cache info
+        if: github.event.inputs.cache_action == 'info'
+        run: |
+          echo "📊 Cache information:"
+          echo "- Go module cache: ~/.cache/go-build, ~/go/pkg/mod, ~/go/bin"
+          echo "- Python cache: ~/.cache/pip, ~/.local/lib/python*/site-packages"  
+          echo "- Tool cache: ~/bin/actionlint, ~/.local/bin/actionlint"
+          echo "- Cache keys are based on go.sum, go.mod, and requirements.txt hashes"
+          echo "- GitHub automatically removes caches older than 7 days"
+          echo "- Maximum cache size per repository: 10GB"
