@@ -16,7 +16,7 @@ DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 # Build flags
 LDFLAGS=-ldflags "-X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.date=$(DATE)"
 
-.PHONY: build test lint fmt clean run deps help install
+.PHONY: build test test-unit test-integration test-all lint lint-fix fmt clean clean-all run deps deps-update deps-check deps-clean tools help install build-all build-cross-platform release-check release-snapshot release-dry-run
 
 # Default target
 all: test build
@@ -38,6 +38,19 @@ dev:
 test:
 	$(GOTEST) -v ./...
 
+# Run tests excluding integration tests
+test-unit:
+	@echo "🧪 Running unit tests (excluding integration tests)..."
+	$(GOTEST) -v ./internal/... ./pkg/... .
+
+# Run integration tests
+test-integration:
+	@echo "🧪 Running integration tests..."
+	@cd test/integration && $(GOTEST) -v .
+
+# Run all tests including integration
+test-all: test test-integration
+
 # Run tests with coverage
 test-coverage:
 	$(GOTEST) -race -coverprofile=coverage.out -covermode=atomic ./...
@@ -47,8 +60,8 @@ test-coverage:
 bench:
 	$(GOTEST) -bench=. -benchmem ./...
 
-# Cross-platform builds
-build-all: clean
+# Cross-platform builds using script
+build-cross-platform: clean
 	./scripts/build-cross-platform.sh $(VERSION)
 
 # Build for Linux AMD64
@@ -77,7 +90,13 @@ build-linux-arm:
 
 # Run linter
 lint:
+	@echo "🔍 Running linter..."
 	golangci-lint run
+
+# Run linter with fixes
+lint-fix:
+	@echo "🔧 Running linter with auto-fixes..."
+	golangci-lint run --fix
 
 # Format code
 fmt:
@@ -90,26 +109,66 @@ clean:
 	rm -rf bin/
 	rm -f coverage.out coverage.html
 
+# Clean everything including dependency cache
+clean-all: clean deps-clean
+	@echo "🧹 Cleaned build artifacts and dependency cache"
+
 # Download dependencies
 deps:
 	$(GOMOD) download
 	$(GOMOD) tidy
 
-# Install tools
+# Update all dependencies to latest versions
+deps-update:
+	@echo "🔄 Updating all dependencies to latest versions..."
+	$(GOGET) -u all
+	$(GOMOD) tidy
+	@echo "✅ Dependencies updated successfully"
+
+# Check for available dependency updates
+deps-check:
+	@echo "🔍 Checking for available dependency updates..."
+	$(GOCMD) list -m -u all
+
+# Clean dependency cache
+deps-clean:
+	@echo "🧹 Cleaning dependency cache..."
+	$(GOCMD) clean -modcache
+
+# Install development tools
 tools:
+	@echo "🔧 Installing development tools..."
 	$(GOGET) golang.org/x/tools/cmd/goimports@latest
 	$(GOGET) github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+	$(GOGET) github.com/goreleaser/goreleaser/v2@latest
+	@echo "✅ Development tools installed successfully"
 
-# Build for multiple platforms
-build-all:
+# Build for multiple platforms directly
+build-all: clean
+	@echo "🏗️ Building for multiple platforms..."
 	CGO_ENABLED=0 GOOS=linux GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -o bin/$(BINARY_NAME)-linux-amd64 .
 	CGO_ENABLED=0 GOOS=windows GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -o bin/$(BINARY_NAME)-windows-amd64.exe .
 	CGO_ENABLED=0 GOOS=darwin GOARCH=amd64 $(GOBUILD) $(LDFLAGS) -o bin/$(BINARY_NAME)-darwin-amd64 .
 	CGO_ENABLED=0 GOOS=darwin GOARCH=arm64 $(GOBUILD) $(LDFLAGS) -o bin/$(BINARY_NAME)-darwin-arm64 .
+	@echo "✅ Multi-platform build completed"
 
 # Install binary to GOPATH/bin
 install:
 	$(GOBUILD) $(LDFLAGS) -o $(GOPATH)/bin/$(BINARY_NAME) .
+
+# Release targets
+release-check:
+	@echo "🔍 Checking if goreleaser is available..."
+	@which goreleaser > /dev/null || (echo "❌ goreleaser not found. Install with: make tools" && exit 1)
+	@echo "✅ goreleaser found"
+
+release-snapshot: release-check
+	@echo "📦 Creating snapshot release..."
+	goreleaser release --snapshot --clean
+
+release-dry-run: release-check
+	@echo "🧪 Dry-run release..."
+	goreleaser release --dry-run
 
 # Development targets
 dev-config:
@@ -154,16 +213,32 @@ help:
 	@echo "  dev-mqtt-listen Listen to MQTT topics"
 	@echo ""
 	@echo "Testing & Quality:"
-	@echo "  test           Run tests"
+	@echo "  test           Run unit tests"
+	@echo "  test-unit      Run unit tests (excluding integration)"
+	@echo "  test-integration Run integration tests"
+	@echo "  test-all       Run all tests including integration"
 	@echo "  test-coverage  Run tests with coverage report"
 	@echo "  bench          Run benchmarks"
 	@echo "  lint           Run linter"
+	@echo "  lint-fix       Run linter with auto-fixes"
 	@echo "  fmt            Format code"
+	@echo ""
+	@echo "Dependencies & Tools:"
+	@echo "  deps           Download dependencies"
+	@echo "  deps-update    Update all dependencies to latest"
+	@echo "  deps-check     Check for available dependency updates"
+	@echo "  deps-clean     Clean dependency cache"
+	@echo "  tools          Install development tools"
+	@echo ""
+	@echo "Release & Build:"
+	@echo "  build-all      Build for multiple platforms directly"
+	@echo "  build-cross-platform Build using cross-platform script"
+	@echo "  release-check  Check if release tools are available"
+	@echo "  release-snapshot Create snapshot release"
+	@echo "  release-dry-run Dry-run release"
 	@echo ""
 	@echo "Maintenance:"
 	@echo "  clean          Clean build artifacts"
-	@echo "  deps           Download dependencies"
-	@echo "  tools          Install development tools"
-	@echo "  build-all      Build for multiple platforms"
+	@echo "  clean-all      Clean everything including dependency cache"
 	@echo "  install        Install binary to GOPATH/bin"
 	@echo "  help           Show this help"

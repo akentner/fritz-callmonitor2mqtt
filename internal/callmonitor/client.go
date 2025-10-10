@@ -18,6 +18,11 @@ type PhoneNumberLookup interface {
 	GetPhoneNumberName(phoneNumber string) (string, error)
 }
 
+// ExtensionLookup interface for resolving extension numbers to info
+type ExtensionLookup interface {
+	GetExtensionInfo(number string) *types.ExtensionInfo
+}
+
 // Client represents a Fritz!Box callmonitor client
 type Client struct {
 	host              string
@@ -32,6 +37,7 @@ type Client struct {
 	localAreaCode     string
 	msns              []string                    // Configured MSNs for detection
 	phoneNumberLookup PhoneNumberLookup           // Optional phone number name lookup
+	extensionLookup   ExtensionLookup             // Optional extension info lookup
 	lineIdToTrunk     map[int]string              // Maps line ID to Line Name
 	lineIdToDirection map[int]types.CallDirection // Maps line ID to Line Direction
 	lineIdToCaller    map[int]string              // Maps line ID to Caller
@@ -65,6 +71,11 @@ func NewClient(host string, port int, timezone *time.Location, countryCode strin
 // SetPhoneNumberLookup sets the phone number lookup interface
 func (c *Client) SetPhoneNumberLookup(lookup PhoneNumberLookup) {
 	c.phoneNumberLookup = lookup
+}
+
+// SetExtensionLookup sets the extension lookup interface
+func (c *Client) SetExtensionLookup(lookup ExtensionLookup) {
+	c.extensionLookup = lookup
 }
 
 // Connect establishes connection to Fritz!Box callmonitor
@@ -410,20 +421,33 @@ func (c *Client) parseEventDisconnect(parts []string, timestamp time.Time, line 
 }
 
 func (c *Client) normalizePhoneNumber(phoneNumber string) string {
+	// First, clean up Fritz!Box specific control characters
+	// Remove all # characters which Fritz!Box uses for call control (e.g., DTMF, transfer codes)
+	phoneNumber = strings.ReplaceAll(phoneNumber, "#", "")
+
+	// Remove trailing * if present (sometimes used for special calls)
+	phoneNumber = strings.TrimSuffix(phoneNumber, "*")
+
+	// If already international format (starts with +), return as is
+	if strings.HasPrefix(phoneNumber, "+") {
+		return phoneNumber
+	}
 
 	// Replace leading "00" with "+"
 	if strings.HasPrefix(phoneNumber, "00") {
 		phoneNumber = "+" + phoneNumber[2:]
-	}
-
-	// If phoneNumber does not starts with "0", prepend localAreaCode
-	if !strings.HasPrefix(phoneNumber, "0") && c.localAreaCode != "" {
-		phoneNumber = "+" + c.countryCode + c.localAreaCode + phoneNumber
+		return phoneNumber
 	}
 
 	// Replace leading "0" with countryCode if configured
 	if strings.HasPrefix(phoneNumber, "0") && c.countryCode != "" {
 		phoneNumber = "+" + c.countryCode + phoneNumber[1:]
+		return phoneNumber
+	}
+
+	// If phoneNumber does not start with "0" and is not international, prepend localAreaCode
+	if c.localAreaCode != "" && c.countryCode != "" {
+		phoneNumber = "+" + c.countryCode + c.localAreaCode + phoneNumber
 	}
 
 	return phoneNumber
@@ -445,13 +469,34 @@ func (c *Client) lookupPhoneNumberName(phoneNumber string) string {
 	return name
 }
 
-// enrichEventWithNames adds caller and called names to the event
+// enrichEventWithNames adds caller and called names and extension info to the event
 func (c *Client) enrichEventWithNames(event *types.CallEvent) {
+	// Resolve phone number names
 	if event.Caller != "" {
 		event.CallerName = c.lookupPhoneNumberName(event.Caller)
 	}
 	if event.Called != "" {
 		event.CalledName = c.lookupPhoneNumberName(event.Called)
+	}
+
+	// Resolve extension information
+	// For outbound calls, the extension is usually the caller (internal number)
+	// For inbound calls, the extension is usually the called party (internal number)
+	if event.Direction == types.CallDirectionOutbound && event.Extension != "" {
+		// Outbound call: extension is the caller
+		event.CallerExtension = c.resolveExtensionInfo(event.Extension)
+	} else if event.Direction == types.CallDirectionInbound && event.Extension != "" {
+		// Inbound call: extension is the called party
+		event.CalledExtension = c.resolveExtensionInfo(event.Extension)
+	}
+
+	// Also try to resolve extension info for internal-to-internal calls
+	// Check if caller or called number matches extension pattern
+	if c.isExtensionNumber(event.Caller) {
+		event.CallerExtension = c.resolveExtensionInfo(event.Caller)
+	}
+	if c.isExtensionNumber(event.Called) {
+		event.CalledExtension = c.resolveExtensionInfo(event.Called)
 	}
 }
 
@@ -485,4 +530,37 @@ func (c *Client) parseTimestamp(timestampStr string) (time.Time, error) {
 	currentYear := time.Now().Year()
 	fullTimestamp := fmt.Sprintf("%02d.%s", currentYear%100, timestampStr[3:])
 	return time.ParseInLocation(layout, fullTimestamp, c.timezone)
+}
+
+// resolveExtensionInfo resolves extension information for a given number
+func (c *Client) resolveExtensionInfo(extension string) *types.ExtensionInfo {
+	if c.extensionLookup == nil || extension == "" {
+		return nil
+	}
+
+	// Try to get extension info from lookup
+	if ext := c.extensionLookup.GetExtensionInfo(extension); ext != nil {
+		return ext
+	}
+
+	return nil
+}
+
+// isExtensionNumber checks if a number looks like an extension (internal number)
+func (c *Client) isExtensionNumber(number string) bool {
+	if number == "" {
+		return false
+	}
+
+	// Extension numbers are typically 1-4 digits and start with specific ranges
+	// Common ranges: 1-99 (analog), 600-699 (voicebox), 610-619 (DECT), 620-629 (VoIP)
+	if len(number) <= 4 && len(number) >= 1 {
+		// Check for common extension patterns
+		if strings.HasPrefix(number, "6") || // 6xx extensions (DECT/VoIP/Voicebox)
+			(len(number) <= 2 && number >= "1" && number <= "99") { // 1-99 analog
+			return true
+		}
+	}
+
+	return false
 }

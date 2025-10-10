@@ -100,7 +100,7 @@ func TestEndToEndIntegration(t *testing.T) {
 	}
 
 	// Create mock MQTT client (minimal parameters)
-	mqttClient := mqtt.NewClient("localhost", 1883, "", "", "test-client", "fritz", 0, false, 30*time.Second, 5*time.Second, "debug")
+	mqttClient := mqtt.NewClient("localhost", 1883, "", "", "test-client", "fritz", 0, false, 30*time.Second, 5*time.Second, "debug", dbClient)
 
 	// Create call manager with MQTT and database
 	callManager := types.NewCallManagerWithMQTTAndDB(mqttClient, dbClient, func(line int, oldStatus, newStatus types.CallStatus, event *types.CallEvent) {

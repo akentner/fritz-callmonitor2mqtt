@@ -1,4 +1,4 @@
-package types
+package integration
 
 import (
 	"os"
@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"fritz-callmonitor2mqtt/internal/database"
+	"fritz-callmonitor2mqtt/pkg/types"
 )
 
 func TestFSMWithPersistence(t *testing.T) {
@@ -50,8 +51,8 @@ func TestFSMWithPersistence(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to retrieve call: %v", err)
 	}
-	if call.Status != CallStatusRinging {
-		t.Errorf("Expected status %s, got %s", CallStatusRinging, call.Status)
+	if call.Status != types.CallStatusRinging {
+		t.Errorf("Expected status %s, got %s", types.CallStatusRinging, call.Status)
 	}
 	if call.Line != line {
 		t.Errorf("Expected line %d, got %d", line, call.Line)
@@ -64,8 +65,8 @@ func TestFSMWithPersistence(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to retrieve updated call: %v", err)
 	}
-	if updatedCall.Status != CallStatusTalking {
-		t.Errorf("Expected status %s, got %s", CallStatusTalking, updatedCall.Status)
+	if updatedCall.Status != types.CallStatusTalking {
+		t.Errorf("Expected status %s, got %s", types.CallStatusTalking, updatedCall.Status)
 	}
 	if updatedCall.ConnectTimestamp == nil {
 		t.Error("Expected connect timestamp to be set")
@@ -78,8 +79,8 @@ func TestFSMWithPersistence(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to retrieve final call: %v", err)
 	}
-	if finalCall.Status != CallStatusFinished {
-		t.Errorf("Expected status %s, got %s", CallStatusFinished, finalCall.Status)
+	if finalCall.Status != types.CallStatusFinished {
+		t.Errorf("Expected status %s, got %s", types.CallStatusFinished, finalCall.Status)
 	}
 	if finalCall.EndTimestamp == nil {
 		t.Error("Expected end timestamp to be set")
@@ -88,7 +89,7 @@ func TestFSMWithPersistence(t *testing.T) {
 	// 4. Wait for timeout to idle (should update finish state but keep call record)
 	time.Sleep(1100 * time.Millisecond)
 
-	if fsm.GetState() != CallStatusIdle {
+	if fsm.GetState() != types.CallStatusIdle {
 		t.Errorf("Expected FSM to be idle after timeout, got %s", fsm.GetState())
 	}
 
@@ -102,8 +103,8 @@ func TestFSMWithPersistence(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to retrieve persisted call: %v", err)
 	}
-	if persistedCall.FinishState == nil || *persistedCall.FinishState != CallStatusFinished {
-		t.Errorf("Expected finish state %s, got %v", CallStatusFinished, persistedCall.FinishState)
+	if persistedCall.FinishState == nil || *persistedCall.FinishState != types.CallStatusFinished {
+		t.Errorf("Expected finish state %s, got %v", types.CallStatusFinished, persistedCall.FinishState)
 	}
 }
 
@@ -150,8 +151,8 @@ func TestFSMWithPersistenceMissedCall(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to retrieve missed call: %v", err)
 	}
-	if missedCall.Status != CallStatusMissedCall {
-		t.Errorf("Expected status %s, got %s", CallStatusMissedCall, missedCall.Status)
+	if missedCall.Status != types.CallStatusMissedCall {
+		t.Errorf("Expected status %s, got %s", types.CallStatusMissedCall, missedCall.Status)
 	}
 
 	// 3. Wait for timeout to idle
@@ -162,8 +163,8 @@ func TestFSMWithPersistenceMissedCall(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to retrieve final call: %v", err)
 	}
-	if finalCall.FinishState == nil || *finalCall.FinishState != CallStatusMissedCall {
-		t.Errorf("Expected finish state %s, got %v", CallStatusMissedCall, finalCall.FinishState)
+	if finalCall.FinishState == nil || *finalCall.FinishState != types.CallStatusMissedCall {
+		t.Errorf("Expected finish state %s, got %v", types.CallStatusMissedCall, finalCall.FinishState)
 	}
 }
 
@@ -194,7 +195,7 @@ func TestLineStateMachineWithPersistence(t *testing.T) {
 	lsm := NewLineStateMachineWithMQTTAndDB(nil, dbClient, nil)
 
 	// Test multiple lines with calls
-	event1 := &CallEvent{
+	event1 := &types.CallEvent{
 		Timestamp: time.Now(),
 		Type:      CallTypeRing,
 		Line:      1,
@@ -202,7 +203,7 @@ func TestLineStateMachineWithPersistence(t *testing.T) {
 		Called:    "987654321",
 	}
 
-	event2 := &CallEvent{
+	event2 := &types.CallEvent{
 		Timestamp: time.Now(),
 		Type:      CallTypeCall,
 		Line:      2,
@@ -211,8 +212,8 @@ func TestLineStateMachineWithPersistence(t *testing.T) {
 	}
 
 	// Process events
-	lsm.ProcessCallEvent(event1)
-	lsm.ProcessCallEvent(event2)
+	lsm.Processtypes.CallEvent(event1)
+	lsm.Processtypes.CallEvent(event2)
 
 	// Verify call IDs are generated
 	callID1 := lsm.GetLineCallID(1)
@@ -231,7 +232,7 @@ func TestLineStateMachineWithPersistence(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to retrieve call for line 1: %v", err)
 		}
-		if call1.Line != 1 || call1.Status != CallStatusRinging {
+		if call1.Line != 1 || call1.Status != types.CallStatusRinging {
 			t.Errorf("Unexpected call1: line=%d, status=%s", call1.Line, call1.Status)
 		}
 	}
@@ -241,7 +242,7 @@ func TestLineStateMachineWithPersistence(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to retrieve call for line 2: %v", err)
 		}
-		if call2.Line != 2 || call2.Status != CallStatusCalling {
+		if call2.Line != 2 || call2.Status != types.CallStatusCalling {
 			t.Errorf("Unexpected call2: line=%d, status=%s", call2.Line, call2.Status)
 		}
 	}

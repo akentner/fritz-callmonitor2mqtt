@@ -21,6 +21,7 @@ func TestNewClient(t *testing.T) {
 		60*time.Second,
 		30*time.Second,
 		"info",
+		nil,
 	)
 
 	if client.broker != "localhost" {
@@ -44,6 +45,7 @@ func TestLineStatusManagement(t *testing.T) {
 	client := NewClient(
 		"localhost", 1883, "", "", "test", "test", 1, true,
 		60*time.Second, 30*time.Second, "info",
+		nil,
 	)
 
 	// Create test event
@@ -89,6 +91,7 @@ func TestCallHistoryLimit(t *testing.T) {
 	client := NewClient(
 		"localhost", 1883, "", "", "test", "test", 1, true,
 		60*time.Second, 30*time.Second, "info",
+		nil,
 	)
 
 	// Set smaller history size for testing
@@ -125,6 +128,7 @@ func TestIsConnected(t *testing.T) {
 	client := NewClient(
 		"localhost", 1883, "", "", "test", "test", 1, true,
 		60*time.Second, 30*time.Second, "info",
+		nil,
 	)
 
 	if client.IsConnected() {
@@ -143,6 +147,7 @@ func TestCreateStatusMessage(t *testing.T) {
 	client := NewClient(
 		"localhost", 1883, "", "", "test", "test", 1, true,
 		60*time.Second, 30*time.Second, "info",
+		nil,
 	)
 
 	// Test online status message
@@ -188,6 +193,7 @@ func TestCallEventStatusMapping(t *testing.T) {
 	client := NewClient(
 		"localhost", 1883, "", "", "test", "test", 1, true,
 		60*time.Second, 30*time.Second, "info",
+		nil,
 	)
 
 	// Test different call types and their expected status mappings
@@ -267,12 +273,14 @@ func TestFSMDebugTopicsOnlyOnDebugLevel(t *testing.T) {
 	clientInfo := NewClient(
 		"localhost", 1883, "", "", "test", "test", 1, true,
 		60*time.Second, 30*time.Second, "info",
+		nil,
 	)
 
 	// Test with debug log level - FSM topics should be published
 	clientDebug := NewClient(
 		"localhost", 1883, "", "", "test", "test", 1, true,
 		60*time.Second, 30*time.Second, "debug",
+		nil,
 	)
 
 	// Verify log level is set correctly

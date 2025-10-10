@@ -37,25 +37,34 @@ const (
 	CallDirectionOutbound CallDirection = "outbound"
 )
 
+// ExtensionInfo represents extension information for call participants
+type ExtensionInfo struct {
+	Number string `json:"number"` // Extension number (e.g., "610", "620")
+	Name   string `json:"name"`   // Human-readable name (e.g., "Büro", "Wohnzimmer")
+	Type   string `json:"type"`   // Extension type: DECT, VOIP, VOICEBOX, ANALOG, UNKNOWN
+}
+
 // CallEvent represents a single call monitor event from Fritz!Box
 type CallEvent struct {
-	ID          string        `json:"id"` // UUID v7 for tracking calls across states
-	Timestamp   time.Time     `json:"timestamp"`
-	Type        CallType      `json:"type"`
-	Direction   CallDirection `json:"direction"`              // Call direction (inbound/outbound)
-	Line        int           `json:"line"`                   // Line ID
-	Trunk       string        `json:"trunk,omitempty"`        // SIP line ID
-	Extension   string        `json:"extension,omitempty"`    // Internal extension (e.g., "1", "2")
-	Caller      string        `json:"caller,omitempty"`       // Calling number
-	Called      string        `json:"called,omitempty"`       // Called number
-	CallerName  string        `json:"caller_name,omitempty"`  // Name associated with calling number
-	CalledName  string        `json:"called_name,omitempty"`  // Name associated with called number
-	CallerMSN   string        `json:"caller_msn,omitempty"`   // MSN if caller matches configured MSNs
-	CalledMSN   string        `json:"called_msn,omitempty"`   // MSN if called matches configured MSNs
-	Duration    int           `json:"duration,omitempty"`     // Duration in seconds (for end events)
-	Status      CallStatus    `json:"status"`                 // Current FSM status
-	FinishState *CallStatus   `json:"finish_state,omitempty"` // Final status before idle (missedCall, notReached, finished)
-	RawMessage  string        `json:"raw_message,omitempty"`  // Original Fritz!Box message
+	ID              string         `json:"id"` // UUID v7 for tracking calls across states
+	Timestamp       time.Time      `json:"timestamp"`
+	Type            CallType       `json:"type"`
+	Direction       CallDirection  `json:"direction"`                  // Call direction (inbound/outbound)
+	Line            int            `json:"line"`                       // Line ID
+	Trunk           string         `json:"trunk,omitempty"`            // SIP line ID
+	Extension       string         `json:"extension,omitempty"`        // Internal extension (e.g., "1", "2")
+	Caller          string         `json:"caller,omitempty"`           // Calling number
+	Called          string         `json:"called,omitempty"`           // Called number
+	CallerName      string         `json:"caller_name,omitempty"`      // Name associated with calling number
+	CalledName      string         `json:"called_name,omitempty"`      // Name associated with called number
+	CallerMSN       string         `json:"caller_msn,omitempty"`       // MSN if caller matches configured MSNs
+	CalledMSN       string         `json:"called_msn,omitempty"`       // MSN if called matches configured MSNs
+	CallerExtension *ExtensionInfo `json:"caller_extension,omitempty"` // Extension info for caller (if internal)
+	CalledExtension *ExtensionInfo `json:"called_extension,omitempty"` // Extension info for called (if internal)
+	Duration        int            `json:"duration,omitempty"`         // Duration in seconds (for end events)
+	Status          CallStatus     `json:"status"`                     // Current FSM status
+	FinishState     *CallStatus    `json:"finish_state,omitempty"`     // Final status before idle (missedCall, notReached, finished)
+	RawMessage      string         `json:"raw_message,omitempty"`      // Original Fritz!Box message
 }
 
 // LineStatus represents the current status of a phone line
