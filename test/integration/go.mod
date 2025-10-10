@@ -1,6 +1,6 @@
 module fritz-callmonitor2mqtt/test/integration
 
-go 1.25
+go 1.23
 
 replace fritz-callmonitor2mqtt => ../..
 
