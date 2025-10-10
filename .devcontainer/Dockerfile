@@ -13,6 +13,11 @@ RUN apt-get update && apt-get install -y \
     htop \
     net-tools \
     telnet \
+    python3-full \
+    python3-pip \
+    python3-venv \
+    pipx \
+    yamllint \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 

@@ -5,22 +5,21 @@ on:
       - 'v*'
 permissions:
   contents: write
-  packages: write      
+  packages: write
 jobs:
   goreleaser:
     runs-on: ubuntu-latest
     steps:
-      - name: Check GITHUB_TOKEN
+      - name: Check GORELEASER_TOKEN
         run: |
-          if [ -z "${GITHUB_TOKEN}" ]; then
-            echo "GITHUB_TOKEN is not set."
+          if [ -z "${GORELEASER_TOKEN}" ]; then
+            echo "GORELEASER_TOKEN is not set."
             exit 1
           else
-            echo "GITHUB_TOKEN is set."
+            echo "GORELEASER_TOKEN is set."
           fi
         env:
-          GITHUB_TOKEN: ${{ secrets.GORELEASER_TOKEN }}
-
+          GORELEASER_TOKEN: ${{ secrets.GORELEASER_TOKEN }}
       - name: Checkout
         uses: actions/checkout@v4
         with:
@@ -30,18 +29,10 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.25'
-      - name: Update latest tag
-        run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          git tag -f latest
-          git push origin latest --force
-        env:
-          GITHUB_TOKEN: ${{ secrets.GORELEASER_TOKEN }}
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v6
         with:
-          version: 'latest'
+          version: '2.12.0'
           args: release --clean
         env:
-          GITHUB_TOKEN: ${{ secrets.GORELEASER_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GORELEASER_TOKEN }}  # we use a custom token here
