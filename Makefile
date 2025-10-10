@@ -16,7 +16,7 @@ DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 # Build flags
 LDFLAGS=-ldflags "-X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.date=$(DATE)"
 
-.PHONY: build test test-unit test-integration test-all lint lint-fix lint-yaml lint-actions lint-all fmt clean clean-all run deps deps-update deps-check deps-clean tools tools-venv help install build-all build-cross-platform release-check release-snapshot release-dry-run
+.PHONY: build test test-unit test-integration test-all lint lint-fix lint-yaml lint-actions lint-all fmt clean clean-all run deps deps-update deps-check deps-clean tools tools-venv cache-info help install build-all build-cross-platform release-check release-snapshot release-dry-run
 
 # Default target
 all: test build
@@ -134,6 +134,20 @@ clean:
 # Clean everything including dependency cache
 clean-all: clean deps-clean
 	@echo "🧹 Cleaned build artifacts and dependency cache"
+
+# Show cache information
+cache-info:
+	@echo "📊 Build Cache Information:"
+	@echo ""
+	@echo "Go Module Cache:"
+	@go env GOMODCACHE
+	@echo ""
+	@echo "Go Build Cache:"
+	@go env GOCACHE
+	@echo ""
+	@echo "Cache sizes:"
+	@echo -n "Go modules: " && du -sh $$(go env GOMODCACHE) 2>/dev/null || echo "Not found"
+	@echo -n "Go build cache: " && du -sh $$(go env GOCACHE) 2>/dev/null || echo "Not found"
 
 # Download dependencies
 deps:
@@ -283,5 +297,6 @@ help:
 	@echo "Maintenance:"
 	@echo "  clean          Clean build artifacts"
 	@echo "  clean-all      Clean everything including dependency cache"
+	@echo "  cache-info     Show build cache information and sizes"
 	@echo "  install        Install binary to GOPATH/bin"
 	@echo "  help           Show this help"
