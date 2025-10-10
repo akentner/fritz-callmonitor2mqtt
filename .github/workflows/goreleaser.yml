@@ -24,18 +24,30 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          fetch-tags: true
       
-      - name: Fetch tags
-        run: git fetch --force --tags
-      
-      - name: Verify tags
+      - name: Ensure tags are available
         run: |
-          echo "Available tags:"
-          git tag --list --sort=-version:refname | head -10
-          echo "Current commit:"
+          # Refresh all refs to make sure we have the latest tags
+          git fetch origin --tags --force
+          
+          echo "=== Debug Information ==="
+          echo "Current HEAD commit:"
           git rev-parse HEAD
-          echo "Current tag (if any):"
-          git describe --tags --exact-match HEAD 2>/dev/null || echo "No tag on current commit"
+          
+          echo "All available tags:"
+          git tag -l --sort=-version:refname | head -10
+          
+          echo "Tags pointing to current commit:"
+          git tag --points-at HEAD
+          
+          echo "Trying to describe current commit:"
+          git describe --tags HEAD || echo "Could not describe HEAD with tags"
+          
+          echo "Git status:"
+          git status --porcelain
+          
+          echo "=== End Debug Information ==="
       
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -63,5 +75,4 @@ jobs:
           version: '2.12.0'
           args: release --clean
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GORELEASER_TOKEN: ${{ secrets.GORELEASER_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GORELEASER_TOKEN || secrets.GITHUB_TOKEN }}
