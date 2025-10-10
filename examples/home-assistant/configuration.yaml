@@ -17,7 +17,7 @@ input_text:
     pattern: "^\\+?[1-9]\\d{1,14}$"
     mode: text
     max: 20
-    
+
   fritz_phone_name:
     name: "Contact Name"
     mode: text
@@ -38,7 +38,7 @@ template:
           {% endif %}
         availability:
           - topic: "fritz/callmonitor/status"
-            
+
       - name: "Fritz Line 1 Status"
         state_topic: "fritz/callmonitor/line/1/status"
         value_template: "{{ value_json.status }}"
@@ -58,7 +58,7 @@ template:
           {% endif %}
         availability:
           - topic: "fritz/callmonitor/line/1/status"
-            
+
       - name: "Fritz Line 1 Last Call"
         state_topic: "fritz/callmonitor/line/1/last_event"
         value_template: >
@@ -71,7 +71,7 @@ template:
         json_attributes_topic: "fritz/callmonitor/line/1/last_event"
         availability:
           - topic: "fritz/callmonitor/line/1/last_event"
-            
+
       - name: "Fritz Call History"
         state_topic: "fritz/callmonitor/history"
         value_template: "{{ value_json.calls | length }}"
@@ -98,28 +98,28 @@ binary_sensor:
     payload_off: "false"
     device_class: occupancy
     icon: "mdi:phone-in-talk"
-    
+
   - platform: mqtt
     name: "Fritz Line 1 Incoming Call"
     state_topic: "fritz/callmonitor/line/1/status"
     value_template: >
       {{ value_json.status == 'ringing' and value_json.direction == 'inbound' }}
-    payload_on: "true" 
+    payload_on: "true"
     payload_off: "false"
     device_class: occupancy
     icon: "mdi:phone-ring"
-    
+
   - platform: mqtt
     name: "Fritz Line 1 Outgoing Call"
     state_topic: "fritz/callmonitor/line/1/status"
     value_template: >
       {{ value_json.status == 'calling' and value_json.direction == 'outbound' }}
     payload_on: "true"
-    payload_off: "false" 
+    payload_off: "false"
     device_class: occupancy
     icon: "mdi:phone-outgoing"
 
-# Scripts for phone number management  
+# Scripts for phone number management
 script:
   fritz_set_phone_name:
     alias: "Set Fritz Phone Name"
@@ -154,7 +154,7 @@ script:
         data:
           title: "Fritz Phone Number"
           message: "Set {{ phone_number }} → {{ name }}"
-          
+
   fritz_get_phone_name:
     alias: "Get Fritz Phone Name"
     description: "Get information for a phone number"
@@ -172,12 +172,12 @@ script:
           payload: >
             {
               "id": "ha-{{ now().timestamp() | round(3) }}",
-              "method": "get", 
+              "method": "get",
               "phone_number": "{{ phone_number }}",
               "timestamp": "{{ now().isoformat() }}Z"
             }
           qos: 1
-          
+
   fritz_delete_phone_name:
     alias: "Delete Fritz Phone Name"
     description: "Delete a phone number and its name"
@@ -204,7 +204,7 @@ script:
         data:
           title: "Fritz Phone Number"
           message: "Deleted {{ phone_number }}"
-          
+
   fritz_list_phone_names:
     alias: "List Fritz Phone Names"
     description: "List all stored phone numbers"
@@ -234,7 +234,7 @@ recorder:
   include:
     entities:
       - sensor.fritz_callmonitor_status
-      - sensor.fritz_line_1_status  
+      - sensor.fritz_line_1_status
       - sensor.fritz_line_1_last_call
       - sensor.fritz_call_history
       - binary_sensor.fritz_line_1_active
