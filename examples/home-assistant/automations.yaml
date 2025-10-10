@@ -26,7 +26,7 @@
           actions:
             - action: "FRITZ_ANSWER_CALL"
               title: "Answer"
-            - action: "FRITZ_REJECT_CALL" 
+            - action: "FRITZ_REJECT_CALL"
               title: "Reject"
 
 # Outgoing call notification
@@ -63,7 +63,7 @@
   condition:
     - condition: template
       value_template: >
-        {{ states.sensor.fritz_line_1_last_call.attributes.caller_name is defined 
+        {{ states.sensor.fritz_line_1_last_call.attributes.caller_name is defined
            and states.sensor.fritz_line_1_last_call.attributes.caller_name != null }}
     - condition: time
       after: '07:00:00'
@@ -79,7 +79,7 @@
 
 # Log important calls to persistent notification
 - id: fritz_log_important_calls
-  alias: "Fritz Log Important Calls" 
+  alias: "Fritz Log Important Calls"
   description: "Create persistent notifications for calls from important contacts"
   trigger:
     - platform: state
@@ -101,7 +101,7 @@
           {% set caller = call.caller_name or call.caller %}
           {% set called = call.called_name or call.called %}
           {{ direction }} {{ caller }} → {{ called }}
-          
+
           Time: {{ call.timestamp | as_timestamp | timestamp_custom('%H:%M:%S') }}
           Duration: {{ call.duration or 0 }} seconds
         notification_id: "fritz_important_call_{{ call.id }}"
@@ -131,7 +131,7 @@
           {% set unknown_callers = recent_calls | selectattr('caller_name', 'equalto', null) | map(attribute='caller') | list %}
           {% set frequent_number = unknown_callers | list | first %}
           The number {{ frequent_number }} has called {{ unknown_callers | select('equalto', frequent_number) | list | length }} times this week.
-          
+
           Consider adding a contact name using the "Set Fritz Phone Name" script.
         notification_id: "fritz_contact_suggestion"
 
@@ -173,7 +173,7 @@
           tag: "fritz_service_offline"
           priority: high
 
-# Service restored notification  
+# Service restored notification
 - id: fritz_service_restored
   alias: "Fritz Service Restored"
   description: "Notify when fritz-callmonitor2mqtt comes back online"

@@ -40,7 +40,7 @@ jobs:
         run: |
           echo "📊 Cache information:"
           echo "- Go module cache: ~/.cache/go-build, ~/go/pkg/mod, ~/go/bin"
-          echo "- Python cache: ~/.cache/pip, ~/.local/lib/python*/site-packages"  
+          echo "- Python cache: ~/.cache/pip, ~/.local/lib/python*/site-packages"
           echo "- Tool cache: ~/bin/actionlint, ~/.local/bin/actionlint"
           echo "- Cache keys are based on go.sum, go.mod, and requirements.txt hashes"
           echo "- GitHub automatically removes caches older than 7 days"
