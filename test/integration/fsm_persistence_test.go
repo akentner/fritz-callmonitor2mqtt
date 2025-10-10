@@ -15,7 +15,7 @@ func TestFSMWithPersistence(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Initialize test database
 	dbClient, err := database.NewClient(tmpDir)
@@ -26,7 +26,7 @@ func TestFSMWithPersistence(t *testing.T) {
 	if err := dbClient.Connect(); err != nil {
 		t.Fatalf("Failed to connect to database: %v", err)
 	}
-	defer dbClient.Close()
+	defer func() { _ = dbClient.Close() }()
 
 	if err := dbClient.RunEmbeddedMigrations(); err != nil {
 		t.Fatalf("Failed to run migrations: %v", err)
@@ -114,7 +114,7 @@ func TestFSMWithPersistenceMissedCall(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Initialize test database
 	dbClient, err := database.NewClient(tmpDir)
@@ -125,7 +125,7 @@ func TestFSMWithPersistenceMissedCall(t *testing.T) {
 	if err := dbClient.Connect(); err != nil {
 		t.Fatalf("Failed to connect to database: %v", err)
 	}
-	defer dbClient.Close()
+	defer func() { _ = dbClient.Close() }()
 
 	if err := dbClient.RunEmbeddedMigrations(); err != nil {
 		t.Fatalf("Failed to run migrations: %v", err)
@@ -174,7 +174,7 @@ func TestLineStateMachineWithPersistence(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Initialize test database
 	dbClient, err := database.NewClient(tmpDir)
@@ -185,7 +185,7 @@ func TestLineStateMachineWithPersistence(t *testing.T) {
 	if err := dbClient.Connect(); err != nil {
 		t.Fatalf("Failed to connect to database: %v", err)
 	}
-	defer dbClient.Close()
+	defer func() { _ = dbClient.Close() }()
 
 	if err := dbClient.RunEmbeddedMigrations(); err != nil {
 		t.Fatalf("Failed to run migrations: %v", err)

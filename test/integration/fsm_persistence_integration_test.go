@@ -29,14 +29,14 @@ func TestFSMWithDatabasePersistence(t *testing.T) {
 	// Setup test database
 	tempDir, err := os.MkdirTemp("", "fsm_test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
 
 	dbClient, err := database.NewClient(tempDir)
 	require.NoError(t, err)
 
 	err = dbClient.Connect()
 	require.NoError(t, err)
-	defer dbClient.Close()
+	defer func() { _ = dbClient.Close() }()
 
 	err = dbClient.RunEmbeddedMigrations()
 	require.NoError(t, err)
@@ -171,14 +171,14 @@ func TestLineStateMachineWithDatabase(t *testing.T) {
 	// Setup test database
 	tempDir, err := os.MkdirTemp("", "line_fsm_test")
 	require.NoError(t, err)
-	defer os.RemoveAll(tempDir)
+	defer func() { _ = os.RemoveAll(tempDir) }()
 
 	dbClient, err := database.NewClient(tempDir)
 	require.NoError(t, err)
 
 	err = dbClient.Connect()
 	require.NoError(t, err)
-	defer dbClient.Close()
+	defer func() { _ = dbClient.Close() }()
 
 	err = dbClient.RunEmbeddedMigrations()
 	require.NoError(t, err)
