@@ -16,7 +16,7 @@ DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 # Build flags
 LDFLAGS=-ldflags "-X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.date=$(DATE)"
 
-.PHONY: build test test-unit test-integration test-all lint lint-fix fmt clean clean-all run deps deps-update deps-check deps-clean tools help install build-all build-cross-platform release-check release-snapshot release-dry-run
+.PHONY: build test test-unit test-integration test-all lint lint-fix lint-yaml lint-actions lint-all fmt clean clean-all run deps deps-update deps-check deps-clean tools tools-venv help install build-all build-cross-platform release-check release-snapshot release-dry-run
 
 # Default target
 all: test build
@@ -98,6 +98,28 @@ lint-fix:
 	@echo "🔧 Running linter with auto-fixes..."
 	golangci-lint run --fix
 
+# Lint YAML files
+lint-yaml:
+	@echo "🔍 Linting YAML files..."
+	@if [ -f ".venv/bin/yamllint" ]; then \
+		.venv/bin/yamllint .; \
+	elif which yamllint > /dev/null; then \
+		yamllint .; \
+	else \
+		echo "❌ yamllint not found. Run: make tools or make tools-venv"; \
+		exit 1; \
+	fi
+
+# Lint GitHub Actions workflows
+lint-actions:
+	@echo "🔍 Linting GitHub Actions workflows..."
+	@which actionlint > /dev/null || (echo "❌ actionlint not found. Run: make tools" && exit 1)
+	actionlint
+
+# Run all linting
+lint-all: lint lint-yaml lint-actions
+	@echo "✅ All linting completed"
+
 # Format code
 fmt:
 	$(GOCMD) fmt ./...
@@ -141,7 +163,24 @@ tools:
 	$(GOGET) golang.org/x/tools/cmd/goimports@latest
 	$(GOGET) github.com/golangci/golangci-lint/cmd/golangci-lint@latest
 	$(GOGET) github.com/goreleaser/goreleaser/v2@latest
+	@echo "🔧 Installing YAML and GitHub Actions linting tools..."
+	@which yamllint > /dev/null || (echo "Installing yamllint via system package manager..." && sudo apt-get update && sudo apt-get install -y yamllint)
+	@which actionlint > /dev/null || (echo "Installing actionlint..." && bash <(curl https://raw.githubusercontent.com/rhymond/actionlint/main/scripts/download-actionlint.bash))
 	@echo "✅ Development tools installed successfully"
+
+# Install tools with virtual environment (alternative method)
+tools-venv:
+	@echo "🔧 Installing tools in virtual environment..."
+	$(GOGET) golang.org/x/tools/cmd/goimports@latest
+	$(GOGET) github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+	$(GOGET) github.com/goreleaser/goreleaser/v2@latest
+	@echo "🔧 Setting up Python virtual environment for linting tools..."
+	@if [ ! -d ".venv" ]; then python3 -m venv .venv; fi
+	@.venv/bin/pip install --upgrade pip
+	@.venv/bin/pip install yamllint
+	@which actionlint > /dev/null || (echo "Installing actionlint..." && bash <(curl https://raw.githubusercontent.com/rhymond/actionlint/main/scripts/download-actionlint.bash))
+	@echo "✅ Development tools installed successfully in virtual environment"
+	@echo "💡 Note: YAML linting will use .venv/bin/yamllint"
 
 # Build for multiple platforms directly
 build-all: clean
@@ -219,8 +258,11 @@ help:
 	@echo "  test-all       Run all tests including integration"
 	@echo "  test-coverage  Run tests with coverage report"
 	@echo "  bench          Run benchmarks"
-	@echo "  lint           Run linter"
-	@echo "  lint-fix       Run linter with auto-fixes"
+	@echo "  lint           Run Go linter"
+	@echo "  lint-fix       Run Go linter with auto-fixes"
+	@echo "  lint-yaml      Run YAML linter"
+	@echo "  lint-actions   Run GitHub Actions linter"
+	@echo "  lint-all       Run all linters (Go, YAML, Actions)"
 	@echo "  fmt            Format code"
 	@echo ""
 	@echo "Dependencies & Tools:"
@@ -228,7 +270,8 @@ help:
 	@echo "  deps-update    Update all dependencies to latest"
 	@echo "  deps-check     Check for available dependency updates"
 	@echo "  deps-clean     Clean dependency cache"
-	@echo "  tools          Install development tools"
+	@echo "  tools          Install development tools (system/user)"
+	@echo "  tools-venv     Install development tools in virtual environment"
 	@echo ""
 	@echo "Release & Build:"
 	@echo "  build-all      Build for multiple platforms directly"
