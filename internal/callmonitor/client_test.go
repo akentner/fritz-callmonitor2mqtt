@@ -510,3 +510,55 @@ func TestUUIDv7Ordering(t *testing.T) {
 		}
 	}
 }
+
+func TestNormalizePhoneNumber(t *testing.T) {
+	// Create client with German settings
+	location, _ := time.LoadLocation("Europe/Berlin")
+	client := NewClient("192.168.178.1", 1012, location, "49", "6181", []string{"990134", "990135"})
+
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "mobile with single hash",
+			input:    "01783278576#",
+			expected: "+491783278576",
+		},
+		{
+			name:     "mobile with multiple hashes (DTMF codes)",
+			input:    "01783278576#552#",
+			expected: "+491783278576552",
+		},
+		{
+			name:     "landline with hash",
+			input:    "06181990134#",
+			expected: "+496181990134",
+		},
+		{
+			name:     "international with hash",
+			input:    "+491783278576#123#",
+			expected: "+491783278576123",
+		},
+		{
+			name:     "local number with hash",
+			input:    "990134#",
+			expected: "+496181990134",
+		},
+		{
+			name:     "normal number without hash",
+			input:    "+491783278576",
+			expected: "+491783278576",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := client.normalizePhoneNumber(tt.input)
+			if result != tt.expected {
+				t.Errorf("normalizePhoneNumber(%s) = %s, want %s", tt.input, result, tt.expected)
+			}
+		})
+	}
+}

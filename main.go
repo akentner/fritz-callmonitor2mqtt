@@ -114,6 +114,9 @@ func main() {
 	// Set phone number lookup in callmonitor client
 	callmonitorClient.SetPhoneNumberLookup(dbClient)
 
+	// Set extension lookup in callmonitor client
+	callmonitorClient.SetExtensionLookup(&cfg.PBX)
+
 	// Initialize call manager with MQTT and database integration
 	callManager := types.NewCallManagerWithMQTTAndDB(mqttClient, dbClient, func(line int, oldStatus, newStatus types.CallStatus, event *types.CallEvent) {
 		log.Printf("Line %d status changed: %s -> %s", line, oldStatus, newStatus)

@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"fritz-callmonitor2mqtt/pkg/types"
 )
 
 // Config holds all configuration for the application
@@ -32,10 +34,18 @@ type FritzBoxConfig struct {
 	Port int    `mapstructure:"port"`
 }
 
+// Extension represents a Fritz!Box extension/nebenstelle
+type Extension struct {
+	Number string `json:"number"` // Extension number (e.g., "610", "620")
+	Name   string `json:"name"`   // Human-readable name (e.g., "Büro", "Wohnzimmer")
+	Type   string `json:"type"`   // Extension type: DECT, VOIP, VOICEBOX, ANALOG, UNKNOWN
+}
+
 type PBXConfig struct {
-	MSN           []string `mapstructure:"msn"`             // List of MSNs ["9876541","9876542",...]
-	CountryCode   string   `mapstructure:"country_code"`    // Country code
-	LocalAreaCode string   `mapstructure:"local_area_code"` // Local area code
+	MSN           []string    `mapstructure:"msn"`             // List of MSNs ["9876541","9876542",...]
+	CountryCode   string      `mapstructure:"country_code"`    // Country code
+	LocalAreaCode string      `mapstructure:"local_area_code"` // Local area code
+	Extensions    []Extension `mapstructure:"extensions"`      // Extension configurations
 }
 
 // MQTTConfig contains MQTT broker settings
@@ -77,6 +87,7 @@ func LoadConfig() (*Config, error) {
 			MSN:           getEnvListOrDefault("FRITZ_CALLMONITOR_PBX_MSN", []string{}),
 			CountryCode:   getEnvOrDefault("FRITZ_CALLMONITOR_PBX_COUNTRY_CODE", "49"),
 			LocalAreaCode: getEnvOrDefault("FRITZ_CALLMONITOR_PBX_LOCAL_AREA_CODE", ""),
+			Extensions:    loadExtensionsFromEnv(),
 		},
 		MQTT: MQTTConfig{
 			Broker:         getEnvOrDefault("FRITZ_CALLMONITOR_MQTT_BROKER", "localhost"),
@@ -180,6 +191,194 @@ func (c *Config) Validate() error {
 	}
 
 	return nil
+}
+
+// loadExtensionsFromEnv loads extension configurations from environment variables
+// Format: FRITZ_CALLMONITOR_PBX_EXTENSION_<INDEX>_<PROPERTY>
+// Example: FRITZ_CALLMONITOR_PBX_EXTENSION_0_NUMBER="610"
+//
+//	FRITZ_CALLMONITOR_PBX_EXTENSION_0_NAME="Büro"
+//	FRITZ_CALLMONITOR_PBX_EXTENSION_0_TYPE="DECT"
+func loadExtensionsFromEnv() []Extension {
+	extensions := []Extension{}
+	extensionMap := make(map[string]map[string]string)
+
+	// Parse all environment variables with the extension prefix
+	for _, env := range os.Environ() {
+		parts := strings.SplitN(env, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+
+		key, value := parts[0], parts[1]
+
+		// Check if this is an extension environment variable
+		if !strings.HasPrefix(key, "FRITZ_CALLMONITOR_PBX_EXTENSION_") {
+			continue
+		}
+
+		// Extract index and property from key
+		// FRITZ_CALLMONITOR_PBX_EXTENSION_0_NUMBER -> ["0", "NUMBER"]
+		suffix := strings.TrimPrefix(key, "FRITZ_CALLMONITOR_PBX_EXTENSION_")
+		parts = strings.SplitN(suffix, "_", 2)
+		if len(parts) != 2 {
+			continue
+		}
+
+		index, property := parts[0], parts[1]
+
+		// Initialize extension map for this index
+		if extensionMap[index] == nil {
+			extensionMap[index] = make(map[string]string)
+		}
+
+		extensionMap[index][property] = value
+	}
+
+	// Convert map to Extension structs
+	for _, extMap := range extensionMap {
+		number := extMap["NUMBER"]
+		name := extMap["NAME"]
+
+		// Skip if required fields are missing
+		if number == "" || name == "" {
+			continue
+		}
+
+		// Get type from env or derive automatically
+		extType := extMap["TYPE"]
+		if extType == "" {
+			// Use a temporary PBXConfig to access the method
+			tempConfig := &PBXConfig{}
+			extType = tempConfig.getExtensionTypeByNumber(number)
+		}
+
+		extensions = append(extensions, Extension{
+			Number: number,
+			Name:   name,
+			Type:   extType,
+		})
+	}
+
+	return extensions
+}
+
+
+
+// GetExtensionByNumber returns the extension configuration for a given number
+func (p *PBXConfig) GetExtensionByNumber(number string) *Extension {
+	for i := range p.Extensions {
+		if p.Extensions[i].Number == number {
+			return &p.Extensions[i]
+		}
+	}
+	return nil
+}
+
+// GetExtensionInfo returns extension info in types.ExtensionInfo format
+// It supports both GUI numbers (e.g., "621") and callmonitor event numbers (e.g., "21")
+func (p *PBXConfig) GetExtensionInfo(number string) *types.ExtensionInfo {
+	// First try direct lookup with the provided number
+	ext := p.GetExtensionByNumber(number)
+	if ext != nil {
+		return &types.ExtensionInfo{
+			Number: ext.Number,
+			Name:   ext.Name,
+			Type:   ext.Type,
+		}
+	}
+
+	// If not found, try to find by mapped extension number
+	// Fritz!Box transforms GUI extension numbers to callmonitor event numbers:
+	// GUI 621 -> Event 21, GUI 615 -> Event 15, etc.
+	ext = p.findExtensionByCallmonitorNumber(number)
+	if ext != nil {
+		return &types.ExtensionInfo{
+			Number: ext.Number,
+			Name:   ext.Name,
+			Type:   ext.Type,
+		}
+	}
+
+	return nil
+}
+
+// findExtensionByCallmonitorNumber finds an extension by its callmonitor event number
+// Fritz!Box transforms GUI extension numbers to callmonitor event numbers:
+// - GUI 6xx -> Event xx (e.g., 621 -> 21, 615 -> 15)
+// - Analogue Box numbers map differently (e.g., AB 22 -> 40)
+func (p *PBXConfig) findExtensionByCallmonitorNumber(eventNumber string) *Extension {
+	for _, ext := range p.Extensions {
+		if p.getCallmonitorNumber(ext.Number) == eventNumber {
+			return &ext
+		}
+	}
+	return nil
+}
+
+// getCallmonitorNumber converts extension numbers to their callmonitor event equivalent
+// Based on Fritz!Box internal number mapping:
+// - **600 to **609 are VOICEBOX and appear as Extensions 40-49 in events
+// - **610 to **619 are DECT and appear as Extensions 10-19 in events
+// - **620 to **629 are VOIP and appear as Extensions 20-29 in events
+// - GUI 6xx extensions: remove leading "6" (621 -> 21, 615 -> 15)
+// - Other numbers return as-is
+func (p *PBXConfig) getCallmonitorNumber(guiNumber string) string {
+	// Handle internal **6xx numbers directly
+	if strings.HasPrefix(guiNumber, "**6") && len(guiNumber) == 5 {
+		internalNum := guiNumber[3:] // Extract last two digits from "**6xx"
+		if num, err := strconv.Atoi(internalNum); err == nil {
+			if num >= 0 && num <= 9 {
+				// **600-**609 -> VOICEBOX -> Events 40-49
+				return strconv.Itoa(40 + num)
+			} else if num >= 10 && num <= 19 {
+				// **610-**619 -> DECT -> Events 10-19
+				return strconv.Itoa(num) // **615 -> Event 15, **612 -> Event 12
+			} else if num >= 20 && num <= 29 {
+				// **620-**629 -> VOIP -> Events 20-29
+				return strconv.Itoa(num) // **623 -> Event 23, **621 -> Event 21
+			}
+		}
+	}
+
+	// Handle 6xx GUI extensions: remove leading "6"
+	if len(guiNumber) == 3 && strings.HasPrefix(guiNumber, "6") {
+		return guiNumber[1:] // "621" -> "21", "615" -> "15"
+	}
+
+	// For all other extensions, return as-is
+	return guiNumber
+}
+
+// getExtensionTypeByNumber determines the extension type based on Fritz!Box internal number ranges
+func (p *PBXConfig) getExtensionTypeByNumber(number string) string {
+	// Handle internal **6xx numbers
+	if strings.HasPrefix(number, "**6") && len(number) == 5 {
+		internalNum := number[3:] // Extract last two digits from "**6xx"
+		if num, err := strconv.Atoi(internalNum); err == nil {
+			if num >= 0 && num <= 9 {
+				return "VOICEBOX" // **600-**609 -> VOICEBOX
+			} else if num >= 10 && num <= 19 {
+				return "DECT" // **610-**619 -> DECT
+			} else if num >= 20 && num <= 29 {
+				return "VOIP" // **620-**629 -> VOIP
+			}
+		}
+	}
+
+	// Handle 6xx GUI extensions
+	if len(number) == 3 && strings.HasPrefix(number, "6") {
+		if num, err := strconv.Atoi(number[1:]); err == nil {
+			if num >= 10 && num <= 19 {
+				return "DECT" // 610-619 -> DECT
+			} else if num >= 20 && num <= 29 {
+				return "VOIP" // 620-629 -> VOIP
+			}
+		}
+	}
+
+	// All other numbers are UNKNOWN
+	return "UNKNOWN"
 }
 
 // GetLocation returns the configured timezone location
