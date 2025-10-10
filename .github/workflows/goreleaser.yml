@@ -7,6 +7,17 @@ jobs:
   goreleaser:
     runs-on: ubuntu-latest
     steps:
+      - name: Check GITHUB_TOKEN
+        run: |
+          if [ -z "${GITHUB_TOKEN}" ]; then
+            echo "GITHUB_TOKEN is not set."
+            exit 1
+          else
+            echo "GITHUB_TOKEN is set."
+          fi
+        env:
+          GITHUB_TOKEN: ${{ secrets.GORELEASER_TOKEN }}
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
@@ -16,13 +27,6 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.25'
-      - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v6
-        with:
-          version: 'latest'
-          args: release --clean
-        env:
-          GITHUB_TOKEN: ${{ secrets.GORELEASER_TOKEN }}
       - name: Update latest tag
         run: |
           git config --local user.email "action@github.com"
@@ -30,4 +34,11 @@ jobs:
           git tag -f latest
           git push origin latest --force
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GORELEASER_TOKEN }}
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          version: 'latest'
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GORELEASER_TOKEN }}
