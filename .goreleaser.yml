@@ -5,6 +5,8 @@ version: 2
 
 project_name: fritz-callmonitor2mqtt
 
+dist: dist
+
 before:
   hooks:
     - go mod tidy
@@ -47,8 +49,7 @@ archives:
       - config.env.example
 
 git:
-  prerelease_suffix: "-rc*"
-  tag_sort: semver
+  tag_sort: -version:refname
 
 checksum:
   name_template: "checksums.txt"
