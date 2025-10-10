@@ -336,7 +336,7 @@ func (c *Client) GetCallsByLine(line int, limit int) ([]Call, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to query calls: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var calls []Call
 	for rows.Next() {
@@ -499,7 +499,7 @@ func (c *Client) GetAllPhoneNumbers(limit int) ([]PhoneNumber, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to query phone numbers: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var phoneNumbers []PhoneNumber
 	for rows.Next() {
@@ -559,7 +559,7 @@ func (c *Client) SearchPhoneNumbersByName(namePattern string, limit int) ([]Phon
 	if err != nil {
 		return nil, fmt.Errorf("failed to search phone numbers by name: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var phoneNumbers []PhoneNumber
 	for rows.Next() {

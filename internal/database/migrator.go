@@ -221,7 +221,7 @@ func (m *Migrator) Migrate() error {
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	for _, migration := range pendingMigrations {
 		if err := m.applyMigration(tx, migration); err != nil {
@@ -269,7 +269,7 @@ func (m *Migrator) GetAppliedMigrations() ([]Migration, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to query applied migrations: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var migrations []Migration
 	for rows.Next() {

@@ -113,6 +113,7 @@ func (fsm *CallStateMachine) processEventInternal(eventType CallType, event *Cal
 				if err := fsm.mqttPublisher.PublishLineStatusChange(line, old, new, publishEvent); err != nil {
 					// Log error but don't block FSM operation
 					// TODO: Add proper logging interface
+					_ = err // Explicitly ignore error for now
 				}
 			}(fsm.line, oldState, newState, event, isTimeout)
 		}
@@ -181,12 +182,14 @@ func (fsm *CallStateMachine) setState(newState CallStatus) {
 			if err := fsm.dbPersister.InsertCall(*fsm.callID, fsm.line, newState, fsm.lastEvent); err != nil {
 				// Log error but don't block FSM operation
 				// TODO: Add proper logging interface
+				_ = err // Explicitly ignore error for now
 			}
 		} else if fsm.callID != nil && oldState != CallStatusIdle {
 			// Update existing call record for all other transitions
 			if err := fsm.dbPersister.UpdateCall(*fsm.callID, newState, fsm.finishState, fsm.lastEvent); err != nil {
 				// Log error but don't block FSM operation
 				// TODO: Add proper logging interface
+				_ = err // Explicitly ignore error for now
 			}
 		}
 
@@ -249,6 +252,7 @@ func (fsm *CallStateMachine) executeTimeoutTransition() {
 			go func(line int, old CallStatus) {
 				if err := fsm.mqttPublisher.PublishLineStatusChange(line, old, CallStatusIdle, nil); err != nil {
 					// Ignore error for timeout transitions
+					_ = err // Explicitly ignore error for timeout
 				}
 			}(fsm.line, oldState)
 		}

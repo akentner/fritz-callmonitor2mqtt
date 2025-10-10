@@ -79,7 +79,7 @@ func TestClientMigrations(t *testing.T) {
 	if err := client.Connect(); err != nil {
 		t.Fatalf("Failed to connect: %v", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	// Test embedded migrations
 	if err := client.RunEmbeddedMigrations(); err != nil {
@@ -124,7 +124,7 @@ func TestGetMigrator(t *testing.T) {
 	if err := client.Connect(); err != nil {
 		t.Fatalf("Failed to connect: %v", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	migrator := client.GetMigrator()
 	if migrator == nil {

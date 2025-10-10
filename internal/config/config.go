@@ -263,8 +263,6 @@ func loadExtensionsFromEnv() []Extension {
 	return extensions
 }
 
-
-
 // GetExtensionByNumber returns the extension configuration for a given number
 func (p *PBXConfig) GetExtensionByNumber(number string) *Extension {
 	for i := range p.Extensions {

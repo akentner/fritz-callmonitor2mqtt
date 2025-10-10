@@ -16,7 +16,7 @@ func TestCallPersistence(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Initialize test database
 	client, err := NewClient(tmpDir)
@@ -27,7 +27,7 @@ func TestCallPersistence(t *testing.T) {
 	if err := client.Connect(); err != nil {
 		t.Fatalf("Failed to connect to database: %v", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	if err := client.RunEmbeddedMigrations(); err != nil {
 		t.Fatalf("Failed to run migrations: %v", err)
@@ -152,7 +152,7 @@ func TestCallNotFound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
 	}
-	defer os.RemoveAll(tmpDir)
+	defer func() { _ = os.RemoveAll(tmpDir) }()
 
 	// Initialize test database
 	client, err := NewClient(tmpDir)
@@ -163,7 +163,7 @@ func TestCallNotFound(t *testing.T) {
 	if err := client.Connect(); err != nil {
 		t.Fatalf("Failed to connect to database: %v", err)
 	}
-	defer client.Close()
+	defer func() { _ = client.Close() }()
 
 	if err := client.RunEmbeddedMigrations(); err != nil {
 		t.Fatalf("Failed to run migrations: %v", err)
