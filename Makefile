@@ -8,6 +8,15 @@ GOMOD=$(GOCMD) mod
 BINARY_NAME=fritz-callmonitor2mqtt
 BINARY_UNIX=$(BINARY_NAME)_unix
 
+# Tool paths (auto-detect)
+GOLANGCI_LINT=$(shell which golangci-lint 2>/dev/null || echo "$(HOME)/go/bin/golangci-lint")
+
+# Debug target to show detected tool paths
+debug-tools:
+	@echo "🔧 Detected tool paths:"
+	@echo "  GOLANGCI_LINT: $(GOLANGCI_LINT)"
+	@echo "  Exists: $$(test -f '$(GOLANGCI_LINT)' && echo '✅ yes' || echo '❌ no')"
+
 # Build info
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
@@ -16,7 +25,7 @@ DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 # Build flags
 LDFLAGS=-ldflags "-X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.date=$(DATE)"
 
-.PHONY: build test test-unit test-integration test-all lint lint-fix lint-yaml lint-actions lint-all lint-fix-all fix-errcheck pre-commit init status fmt clean clean-all run deps deps-update deps-check deps-clean tools tools-venv cache-info help install build-all build-cross-platform release-check release-snapshot release-dry-run
+.PHONY: build test test-unit test-integration test-all lint lint-fix lint-yaml lint-actions lint-all lint-fix-all fix-errcheck pre-commit init status debug-tools fmt clean clean-all run deps deps-update deps-check deps-clean tools tools-venv cache-info help install build-all build-cross-platform release-check release-snapshot release-dy-run
 
 # Default target
 all: test build
@@ -91,12 +100,22 @@ build-linux-arm:
 # Run linter
 lint:
 	@echo "🔍 Running linter..."
-	golangci-lint run
+	@if [ -f "$(GOLANGCI_LINT)" ]; then \
+		$(GOLANGCI_LINT) run; \
+	else \
+		echo "❌ golangci-lint not found. Run 'make tools' to install."; \
+		exit 1; \
+	fi
 
 # Run linter with fixes
 lint-fix:
 	@echo "🔧 Running linter with auto-fixes..."
-	golangci-lint run --fix
+	@if [ -f "$(GOLANGCI_LINT)" ]; then \
+		$(GOLANGCI_LINT) run --fix; \
+	else \
+		echo "❌ golangci-lint not found. Run 'make tools' to install."; \
+		exit 1; \
+	fi
 
 # Lint YAML files
 lint-yaml:
