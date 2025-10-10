@@ -16,7 +16,7 @@ DATE ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 # Build flags
 LDFLAGS=-ldflags "-X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.date=$(DATE)"
 
-.PHONY: build test test-unit test-integration test-all lint lint-fix lint-yaml lint-actions lint-all fmt clean clean-all run deps deps-update deps-check deps-clean tools tools-venv cache-info help install build-all build-cross-platform release-check release-snapshot release-dry-run
+.PHONY: build test test-unit test-integration test-all lint lint-fix lint-yaml lint-actions lint-all lint-fix-all fix-errcheck pre-commit fmt clean clean-all run deps deps-update deps-check deps-clean tools tools-venv cache-info help install build-all build-cross-platform release-check release-snapshot release-dry-run
 
 # Default target
 all: test build
@@ -119,6 +119,31 @@ lint-actions:
 # Run all linting
 lint-all: lint lint-yaml lint-actions
 	@echo "✅ All linting completed"
+
+# Pre-commit checks
+pre-commit: fmt lint-all test-unit
+	@echo "🔍 Running pre-commit checks..."
+	@echo "✅ Pre-commit checks passed - ready to commit!"
+
+# Fix common linting issues automatically
+lint-fix-all: fmt lint-fix fix-errcheck
+	@echo "🔧 Auto-fixing common linting issues..."
+	@echo "✅ Auto-fixes applied"
+
+# Fix errcheck issues (ignore errors in defer/cleanup)
+fix-errcheck:
+	@echo "🔧 Fixing errcheck issues..."
+	@# Add blank identifier to ignore errors in defer statements where appropriate
+	@find . -name "*.go" -not -path "./vendor/*" -not -path "./.git/*" -not -path "./.venv/*" | \
+		xargs grep -l "defer.*Close()" | \
+		xargs sed -i 's/defer \([^(]*Close()\)/defer func() { _ = \1 }()/g' || true
+	@find . -name "*.go" -not -path "./vendor/*" -not -path "./.git/*" -not -path "./.venv/*" | \
+		xargs grep -l "defer.*RemoveAll" | \
+		xargs sed -i 's/defer os\.RemoveAll(\([^)]*\))/defer func() { _ = os.RemoveAll(\1) }()/g' || true
+	@find . -name "*.go" -not -path "./vendor/*" -not -path "./.git/*" -not -path "./.venv/*" | \
+		xargs grep -l "defer.*Rollback" | \
+		xargs sed -i 's/defer \([^(]*Rollback()\)/defer func() { _ = \1 }()/g' || true
+	@echo "✅ errcheck fixes applied"
 
 # Format code
 fmt:

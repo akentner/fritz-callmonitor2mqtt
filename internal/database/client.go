@@ -54,19 +54,19 @@ func (c *Client) Connect() error {
 
 	// Test the connection
 	if err := c.db.Ping(); err != nil {
-		c.db.Close()
+		_ = c.db.Close()
 		return fmt.Errorf("failed to ping database: %w", err)
 	}
 
 	// Enable WAL mode for better concurrency
 	if _, err := c.db.Exec("PRAGMA journal_mode=WAL"); err != nil {
-		c.db.Close()
+		_ = c.db.Close()
 		return fmt.Errorf("failed to enable WAL mode: %w", err)
 	}
 
 	// Enable foreign keys
 	if _, err := c.db.Exec("PRAGMA foreign_keys=ON"); err != nil {
-		c.db.Close()
+		_ = c.db.Close()
 		return fmt.Errorf("failed to enable foreign keys: %w", err)
 	}
 
