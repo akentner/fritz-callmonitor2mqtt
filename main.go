@@ -53,14 +53,15 @@ func main() {
 	}
 
 	if *configTest {
+		cfg.LogConfigurationSummary()
 		fmt.Println("Configuration is valid")
 		os.Exit(0)
 	}
 
 	log.Printf("Starting fritz-callmonitor2mqtt %s...", version)
-	log.Printf("Fritz!Box: %s:%d", cfg.FritzBox.Host, cfg.FritzBox.Port)
-	log.Printf("MQTT Broker: %s:%d", cfg.MQTT.Broker, cfg.MQTT.Port)
-	log.Printf("Timezone: %s", cfg.App.Timezone)
+
+	// Log configuration summary
+	cfg.LogConfigurationSummary()
 
 	// Create context for graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())

@@ -386,3 +386,102 @@ func (c *Config) GetLocation() (*time.Location, error) {
 	}
 	return time.LoadLocation(c.App.Timezone)
 }
+
+// LogConfigurationSummary logs a summary of the loaded configuration
+func (c *Config) LogConfigurationSummary() {
+	fmt.Printf("✅ Configuration loaded:\n")
+	fmt.Printf("   Fritz!Box: %s:%d\n", c.FritzBox.Host, c.FritzBox.Port)
+	fmt.Printf("   MQTT:      %s:%d\n", c.MQTT.Broker, c.MQTT.Port)
+	fmt.Printf("   Topics:    %s/*\n", c.MQTT.TopicPrefix)
+	fmt.Printf("   Log Level: %s\n", c.App.LogLevel)
+	fmt.Printf("   Database:  %s\n", c.Database.DataDir)
+
+	// MSN information
+	if len(c.PBX.MSN) > 0 {
+		fmt.Printf("   MSNs:      %s\n", strings.Join(c.PBX.MSN, ", "))
+	} else {
+		fmt.Printf("   MSNs:      none configured\n")
+	}
+
+	// Extension information
+	if len(c.PBX.Extensions) > 0 {
+		fmt.Printf("   Extensions: %d configured\n", len(c.PBX.Extensions))
+
+		// Group extensions by type for better overview
+		voiceboxExts := []Extension{}
+		dectExts := []Extension{}
+		voipExts := []Extension{}
+		otherExts := []Extension{}
+
+		for _, ext := range c.PBX.Extensions {
+			switch ext.Type {
+			case "VOICEBOX":
+				voiceboxExts = append(voiceboxExts, ext)
+			case "DECT":
+				dectExts = append(dectExts, ext)
+			case "VOIP":
+				voipExts = append(voipExts, ext)
+			default:
+				otherExts = append(otherExts, ext)
+			}
+		}
+
+		fmt.Printf("\n")
+		fmt.Printf("Extensions Mapping:\n")
+
+		if len(voiceboxExts) > 0 {
+			fmt.Printf("   VOICEBOX: ")
+			for i, ext := range voiceboxExts {
+				if i > 0 {
+					fmt.Printf(", ")
+				}
+				eventNum := c.PBX.getCallmonitorNumber(ext.Number)
+				fmt.Printf("%s→%s (%s)", ext.Number, eventNum, ext.Name)
+			}
+			fmt.Printf("\n")
+		}
+
+		if len(dectExts) > 0 {
+			fmt.Printf("   DECT:     ")
+			for i, ext := range dectExts {
+				eventNum := c.PBX.getCallmonitorNumber(ext.Number)
+				fmt.Printf("%s→%s (%s)", ext.Number, eventNum, ext.Name)
+				// Line break after every 3 DECT extensions for better readability
+				if (i+1)%3 == 0 && i < len(dectExts)-1 {
+					fmt.Printf("\n             ")
+				} else if i < len(dectExts)-1 {
+					fmt.Printf(", ")
+				}
+			}
+			fmt.Printf("\n")
+		}
+
+		if len(voipExts) > 0 {
+			fmt.Printf("   VOIP:     ")
+			for i, ext := range voipExts {
+				if i > 0 {
+					fmt.Printf(", ")
+				}
+				eventNum := c.PBX.getCallmonitorNumber(ext.Number)
+				fmt.Printf("%s→%s (%s)", ext.Number, eventNum, ext.Name)
+			}
+			fmt.Printf("\n")
+		}
+
+		if len(otherExts) > 0 {
+			fmt.Printf("   OTHER:    ")
+			for i, ext := range otherExts {
+				if i > 0 {
+					fmt.Printf(", ")
+				}
+				eventNum := c.PBX.getCallmonitorNumber(ext.Number)
+				fmt.Printf("%s→%s (%s)", ext.Number, eventNum, ext.Name)
+			}
+			fmt.Printf("\n")
+		}
+	} else {
+		fmt.Printf("   Extensions: none configured\n")
+	}
+
+	fmt.Printf("\n")
+}
