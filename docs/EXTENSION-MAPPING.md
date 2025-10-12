@@ -1,10 +1,10 @@
-# Fritz!Box Extension Mapping
+# FRITZ!Box Extension Mapping
 
-This document explains how Fritz!Box extension numbers are mapped between the GUI configuration and callmonitor events based on systematic internal number ranges.
+This document explains how FRITZ!Box extension numbers are mapped between the GUI configuration and callmonitor events based on systematic internal number ranges.
 
 ## Problem
 
-The Fritz!Box web GUI shows different extension numbers than what appears in the callmonitor events:
+The FRITZ!Box web GUI shows different extension numbers than what appears in the callmonitor events:
 
 - **GUI shows:** Extension 621
 - **Callmonitor receives:** Extension 21
@@ -15,11 +15,11 @@ The Fritz!Box web GUI shows different extension numbers than what appears in the
 
 ## Systematic Mapping Rules
 
-Fritz!Box uses systematic internal **6xx number ranges to determine extension types and event numbers:
+FRITZ!Box uses systematic internal **6xx number ranges to determine extension types and event numbers:
 
 ### Internal **6xx Number Ranges
 
-Fritz!Box assigns extension types based on internal number ranges:
+FRITZ!Box assigns extension types based on internal number ranges:
 
 - **\*\*600 to \*\*609**: VOICEBOX → Events 40-49
 - **\*\*610 to \*\*619**: DECT → Events 10-19  
@@ -50,7 +50,7 @@ Fritz!Box assigns extension types based on internal number ranges:
 
 ## Configuration
 
-When configuring extensions, use the **GUI numbers** from the Fritz!Box web interface:
+When configuring extensions, use the **GUI numbers** from the FRITZ!Box web interface:
 
 ```env
 # Use GUI number 621 (will map to event 21 automatically)
@@ -117,7 +117,7 @@ Another example with VOICEBOX:
 
 To verify your extension mappings:
 
-1. Check your Fritz!Box web GUI for extension numbers
+1. Check your FRITZ!Box web GUI for extension numbers
 2. Monitor callmonitor events to see event extension numbers
 3. Configure using GUI numbers - the system handles mapping automatically
 

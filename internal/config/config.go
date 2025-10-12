@@ -12,7 +12,7 @@ import (
 
 // Config holds all configuration for the application
 type Config struct {
-	// Fritz!Box settings
+	// FRITZ!Box settings
 	FritzBox FritzBoxConfig `mapstructure:"fritzbox"`
 
 	// PBX settings
@@ -28,13 +28,13 @@ type Config struct {
 	Database DatabaseConfig `mapstructure:"database"`
 }
 
-// FritzBoxConfig contains Fritz!Box connection settings
+// FritzBoxConfig contains FRITZ!Box connection settings
 type FritzBoxConfig struct {
 	Host string `mapstructure:"host"`
 	Port int    `mapstructure:"port"`
 }
 
-// Extension represents a Fritz!Box extension/nebenstelle
+// Extension represents a FRITZ!Box extension/nebenstelle
 type Extension struct {
 	Number string `json:"number"` // Extension number (e.g., "610", "620")
 	Name   string `json:"name"`   // Human-readable name (e.g., "Büro", "Wohnzimmer")
@@ -293,7 +293,7 @@ func (p *PBXConfig) GetExtensionInfo(number string) *types.ExtensionInfo {
 	}
 
 	// If not found, try to find by mapped extension number
-	// Fritz!Box transforms GUI extension numbers to callmonitor event numbers:
+	// FRITZ!Box transforms GUI extension numbers to callmonitor event numbers:
 	// GUI 621 -> Event 21, GUI 615 -> Event 15, etc.
 	ext = p.findExtensionByCallmonitorNumber(number)
 	if ext != nil {
@@ -308,7 +308,7 @@ func (p *PBXConfig) GetExtensionInfo(number string) *types.ExtensionInfo {
 }
 
 // findExtensionByCallmonitorNumber finds an extension by its callmonitor event number
-// Fritz!Box transforms GUI extension numbers to callmonitor event numbers:
+// FRITZ!Box transforms GUI extension numbers to callmonitor event numbers:
 // - GUI 6xx -> Event xx (e.g., 621 -> 21, 615 -> 15)
 // - Analogue Box numbers map differently (e.g., AB 22 -> 40)
 func (p *PBXConfig) findExtensionByCallmonitorNumber(eventNumber string) *Extension {
@@ -321,7 +321,7 @@ func (p *PBXConfig) findExtensionByCallmonitorNumber(eventNumber string) *Extens
 }
 
 // getCallmonitorNumber converts extension numbers to their callmonitor event equivalent
-// Based on Fritz!Box internal number mapping:
+// Based on FRITZ!Box internal number mapping:
 // - **600 to **609 are VOICEBOX and appear as Extensions 40-49 in events
 // - **610 to **619 are DECT and appear as Extensions 10-19 in events
 // - **620 to **629 are VOIP and appear as Extensions 20-29 in events
@@ -354,7 +354,7 @@ func (p *PBXConfig) getCallmonitorNumber(guiNumber string) string {
 	return guiNumber
 }
 
-// getExtensionTypeByNumber determines the extension type based on Fritz!Box internal number ranges
+// getExtensionTypeByNumber determines the extension type based on FRITZ!Box internal number ranges
 func (p *PBXConfig) getExtensionTypeByNumber(number string) string {
 	// Handle internal **6xx numbers
 	if strings.HasPrefix(number, "**6") && len(number) == 5 {
@@ -396,7 +396,7 @@ func (c *Config) GetLocation() (*time.Location, error) {
 // LogConfigurationSummary logs a summary of the loaded configuration
 func (c *Config) LogConfigurationSummary() {
 	fmt.Printf("✅ Configuration loaded:\n")
-	fmt.Printf("   Fritz!Box: %s:%d\n", c.FritzBox.Host, c.FritzBox.Port)
+	fmt.Printf("   FRITZ!Box: %s:%d\n", c.FritzBox.Host, c.FritzBox.Port)
 	fmt.Printf("   MQTT:      %s:%d\n", c.MQTT.Broker, c.MQTT.Port)
 	fmt.Printf("   Topics:    %s/*\n", c.MQTT.TopicPrefix)
 	fmt.Printf("   Log Level: %s\n", c.App.LogLevel)

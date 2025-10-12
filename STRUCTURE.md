@@ -19,7 +19,7 @@ your-project/
 your-project/
 ├── cmd/your-project/main.go  # Main application
 ├── internal/                           # Private modules
-│   ├── callmonitor/                   # Fritz!Box Callmonitor logic
+│   ├── callmonitor/                   # FRITZ!Box Callmonitor logic
 │   ├── mqtt/                          # MQTT client logic
 │   └── config/                        # Configuration
 ├── pkg/                               # Reusable packages

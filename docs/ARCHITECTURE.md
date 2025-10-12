@@ -4,7 +4,7 @@
 
 ```
 ┌─────────────────┐    TCP 1012     ┌─────────────────┐
-│   Fritz!Box     │◄───────────────►│  Callmonitor    │
+│   FRITZ!Box     │◄───────────────►│  Callmonitor    │
 │   Router        │                 │     Client      │
 └─────────────────┘                 └─────────┬───────┘
                                               │
@@ -29,7 +29,7 @@
 
 ## Data Flow
 
-1. **Fritz!Box Connection**: Application connects to Fritz!Box callmonitor on TCP port 1012
+1. **FRITZ!Box Connection**: Application connects to FRITZ!Box callmonitor on TCP port 1012
 2. **Event Parsing**: Raw callmonitor messages are parsed into structured events
 3. **Status Tracking**: Line statuses are maintained and updated based on events  
 4. **History Management**: Call history is maintained (last 50 calls)
@@ -37,7 +37,7 @@
 
 ## Message Types
 
-### Fritz!Box Callmonitor Format
+### FRITZ!Box Callmonitor Format
 ```
 timestamp;type;id;extension;caller;called;sip[;duration]
 ```

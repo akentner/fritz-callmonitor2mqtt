@@ -100,7 +100,7 @@ func TestParseCallEvent(t *testing.T) {
 			},
 		},
 		{
-			name:  "incoming call with SIP field (real Fritz!Box format)",
+			name:  "incoming call with SIP field (real FRITZ!Box format)",
 			input: "09.09.25 16:27:15;RING;0;01784567890;990134;SIP1;",
 			expected: &types.CallEvent{
 				Type:   types.CallTypeRing,
@@ -254,7 +254,7 @@ func TestParseTimestamp(t *testing.T) {
 
 				// Should be within reasonable bounds (not too far in future/past)
 				now := time.Now()
-				// Allow for a wider range since we're dealing with Fritz!Box timestamp format
+				// Allow for a wider range since we're dealing with FRITZ!Box timestamp format
 				if result.After(now.Add(10*365*24*time.Hour)) || result.Before(now.Add(-50*365*24*time.Hour)) {
 					t.Errorf("Timestamp seems unreasonable: %v", result)
 				}

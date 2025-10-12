@@ -23,7 +23,7 @@ type ExtensionLookup interface {
 	GetExtensionInfo(number string) *types.ExtensionInfo
 }
 
-// Client represents a Fritz!Box callmonitor client
+// Client represents a FRITZ!Box callmonitor client
 type Client struct {
 	host              string
 	port              int
@@ -78,14 +78,14 @@ func (c *Client) SetExtensionLookup(lookup ExtensionLookup) {
 	c.extensionLookup = lookup
 }
 
-// Connect establishes connection to Fritz!Box callmonitor
+// Connect establishes connection to FRITZ!Box callmonitor
 func (c *Client) Connect() error {
 	// Create new stop channel for this connection
 	c.stopChan = make(chan struct{})
 
-	conn, err := net.Dial("tcp", fmt.Sprintf("%s:%d", c.host, c.port))
+	conn, err := net.Dial("tcp", net.JoinHostPort(c.host, fmt.Sprintf("%d", c.port)))
 	if err != nil {
-		return fmt.Errorf("failed to connect to Fritz!Box callmonitor: %w", err)
+		return fmt.Errorf("failed to connect to FRITZ!Box callmonitor: %w", err)
 	}
 
 	c.conn = conn
@@ -135,7 +135,7 @@ func (c *Client) IsConnected() bool {
 	return c.connected
 }
 
-// readLoop continuously reads from the Fritz!Box connection
+// readLoop continuously reads from the FRITZ!Box connection
 func (c *Client) readLoop() {
 	defer func() {
 		c.connected = false
@@ -182,7 +182,7 @@ func (c *Client) readLoop() {
 	}
 }
 
-// parseEvent parses a Fritz!Box callmonitor line into a CallEvent
+// parseEvent parses a FRITZ!Box callmonitor line into a CallEvent
 func (c *Client) parseEvent(rawMessage string) (*types.CallEvent, error) {
 	// Split the message into parts
 	parts := strings.Split(rawMessage, ";")
@@ -421,8 +421,8 @@ func (c *Client) parseEventDisconnect(parts []string, timestamp time.Time, line 
 }
 
 func (c *Client) normalizePhoneNumber(phoneNumber string) string {
-	// First, clean up Fritz!Box specific control characters
-	// Remove all # characters which Fritz!Box uses for call control (e.g., DTMF, transfer codes)
+	// First, clean up FRITZ!Box specific control characters
+	// Remove all # characters which FRITZ!Box uses for call control (e.g., DTMF, transfer codes)
 	phoneNumber = strings.ReplaceAll(phoneNumber, "#", "")
 
 	// Remove trailing * if present (sometimes used for special calls)
@@ -500,9 +500,9 @@ func (c *Client) enrichEventWithNames(event *types.CallEvent) {
 	}
 }
 
-// parseTimestamp parses Fritz!Box timestamp format
+// parseTimestamp parses FRITZ!Box timestamp format
 func (c *Client) parseTimestamp(timestampStr string) (time.Time, error) {
-	// Fritz!Box format: "21.09.25 15:30:45"
+	// FRITZ!Box format: "21.09.25 15:30:45"
 	layout := "02.01.06 15:04:05"
 
 	// Try parsing as-is first (assuming it's from current century)

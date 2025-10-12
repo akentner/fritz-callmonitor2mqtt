@@ -143,6 +143,11 @@ func (c *Client) Disconnect() error {
 
 	log.Println("Disconnecting from MQTT broker...")
 
+	// // Remove Home Assistant Discovery configurations
+	// if err := c.removeHomeAssistantDiscovery(); err != nil {
+	// 	log.Printf("Failed to remove Home Assistant discovery: %v", err)
+	// }
+
 	// Send explicit offline message before disconnecting
 	topic := fmt.Sprintf("%s/status", c.topicPrefix)
 	payload, err := c.createStatusMessage("offline")
@@ -168,6 +173,11 @@ func (c *Client) onConnect(client mqtt.Client) {
 	// Publish birth message
 	if err := c.publishBirthMessage(); err != nil {
 		log.Printf("Failed to publish birth message: %v", err)
+	}
+
+	// Setup Home Assistant MQTT Discovery
+	if err := c.setupHomeAssistantDiscovery(); err != nil {
+		log.Printf("Failed to setup Home Assistant discovery: %v", err)
 	}
 
 	// Subscribe to phone number RPC topics
@@ -273,8 +283,31 @@ func (c *Client) PublishCallEvent(event types.CallEvent) error {
 	return nil
 }
 
+// getIconForStatus returns the appropriate MDI icon for a call status
+func getIconForStatus(status types.CallStatus) string {
+	iconMapping := map[types.CallStatus]string{
+		"idle":       "mdi:phone-hangup",
+		"calling":    "mdi:phone-outgoing",
+		"notReached": "mdi:phone-remove",
+		"ringing":    "mdi:phone-ring",
+		"missedCall": "mdi:phone-remove",
+		"talking":    "mdi:phone",
+		"finished":   "mdi:phone-hangup",
+		"messageBox": "mdi:phone-message",
+	}
+
+	if icon, exists := iconMapping[status]; exists {
+		return icon
+	}
+
+	return "mdi:phone" // default fallback
+}
+
 // publishLineStatus publishes the status of a phone line
 func (c *Client) publishLineStatus(status *types.LineStatus) error {
+	// Set the appropriate icon for the status
+	status.Icon = getIconForStatus(status.Status)
+
 	topic := fmt.Sprintf("%s/line/%d/status", c.topicPrefix, status.Line)
 
 	payload, err := json.Marshal(status)
@@ -925,7 +958,7 @@ func (c *Client) bootstrapLineStatuses() error {
 		return nil
 	}
 
-	// Check typical Fritz!Box lines (0-7)
+	// Check typical FRITZ!Box lines (0-7)
 	for line := 0; line <= 7; line++ {
 		// Try to get the most recent call for this line from database
 		calls, err := c.db.GetCallsByLine(line, 1)
@@ -1033,5 +1066,198 @@ func (c *Client) publishNull(topic string) error {
 		return fmt.Errorf("failed to publish null message: %w", token.Error())
 	}
 
+	return nil
+}
+
+// Home Assistant MQTT Discovery structures and methods
+
+// HADevice represents a Home Assistant device in MQTT Discovery
+type HADevice struct {
+	Identifiers  []string `json:"identifiers"`
+	Name         string   `json:"name"`
+	Model        string   `json:"model"`
+	Manufacturer string   `json:"manufacturer"`
+	SwVersion    string   `json:"sw_version,omitempty"`
+}
+
+// HAEntityConfig represents base configuration for Home Assistant entities
+type HAEntityConfig struct {
+	Name                 string    `json:"name"`
+	UniqueID             string    `json:"unique_id"`
+	StateTopic           string    `json:"state_topic"`
+	Device               *HADevice `json:"device"`
+	AvailabilityTopic    string    `json:"availability_topic"`
+	AvailabilityMode     string    `json:"availability_mode,omitempty"`
+	AvailabilityTemplate string    `json:"availability_template,omitempty"`
+	PayloadAvailable     string    `json:"payload_available,omitempty"`
+	PayloadNotAvailable  string    `json:"payload_not_available,omitempty"`
+}
+
+// HASensorConfig represents a Home Assistant sensor configuration
+type HASensorConfig struct {
+	HAEntityConfig
+	ValueTemplate          string `json:"value_template,omitempty"`
+	JSONAttributesTemplate string `json:"json_attributes_template,omitempty"`
+	JSONAttributesTopic    string `json:"json_attributes_topic,omitempty"`
+	Icon                   string `json:"icon,omitempty"`
+	UnitOfMeasurement      string `json:"unit_of_measurement,omitempty"`
+}
+
+// setupHomeAssistantDiscovery publishes Home Assistant MQTT Discovery configurations
+func (c *Client) setupHomeAssistantDiscovery() error {
+	if c.logLevel == "debug" {
+		log.Println("Setting up Home Assistant MQTT Discovery...")
+	}
+
+	device := &HADevice{
+		Identifiers:  []string{"fritz-callmonitor2mqtt"},
+		Name:         "FRITZ!Box Callmonitor",
+		Model:        "FRITZ!Box Callmonitor to MQTT Bridge",
+		Manufacturer: "fritz-callmonitor2mqtt",
+		SwVersion:    "v1.3.1",
+	}
+
+	// Setup discovery for line status sensors
+	for line := 0; line < 8; line++ {
+		if err := c.setupLineStatusDiscovery(line, device); err != nil {
+			log.Printf("Failed to setup line %d status discovery: %v", line, err)
+		}
+		if err := c.setupLineLastEventDiscovery(line, device); err != nil {
+			log.Printf("Failed to setup line %d last_event discovery: %v", line, err)
+		}
+	}
+
+	// Setup discovery for MSN call history sensors
+	for msn := range c.msnCallHistories {
+		if err := c.setupMSNCallHistoryDiscovery(msn, device); err != nil {
+			log.Printf("Failed to setup MSN %s call history discovery: %v", msn, err)
+		}
+	}
+
+	if c.logLevel == "debug" {
+		log.Println("Home Assistant MQTT Discovery setup completed")
+	}
+	return nil
+}
+
+// setupLineStatusDiscovery creates discovery config for line status sensors
+func (c *Client) setupLineStatusDiscovery(line int, device *HADevice) error {
+	config := &HASensorConfig{
+		HAEntityConfig: HAEntityConfig{
+			Name:                 fmt.Sprintf("FRITZ!Box Line %d Status", line),
+			UniqueID:             fmt.Sprintf("fritz_callmonitor_line_%d_status", line),
+			StateTopic:           fmt.Sprintf("%s/line/%d/status", c.topicPrefix, line),
+			Device:               device,
+			AvailabilityTopic:    fmt.Sprintf("%s/status", c.topicPrefix),
+			AvailabilityTemplate: `{{ value_json.state }}`,
+			PayloadAvailable:     "online",
+			PayloadNotAvailable:  "offline",
+		},
+		ValueTemplate:       `{{ value_json.status }}`,
+		JSONAttributesTopic: fmt.Sprintf("%s/line/%d/status", c.topicPrefix, line),
+		Icon:                "mdi:phone",
+	}
+
+	discoveryTopic := fmt.Sprintf("homeassistant/sensor/fritz_callmonitor/line_%d_status/config", line)
+	return c.publishDiscoveryConfig(discoveryTopic, config)
+}
+
+// setupLineLastEventDiscovery creates discovery config for line last_event sensors
+func (c *Client) setupLineLastEventDiscovery(line int, device *HADevice) error {
+	config := &HASensorConfig{
+		HAEntityConfig: HAEntityConfig{
+			Name:                 fmt.Sprintf("FRITZ!Box Line %d Last Event", line),
+			UniqueID:             fmt.Sprintf("fritz_callmonitor_line_%d_last_event", line),
+			StateTopic:           fmt.Sprintf("%s/line/%d/last_event", c.topicPrefix, line),
+			Device:               device,
+			AvailabilityTopic:    fmt.Sprintf("%s/status", c.topicPrefix),
+			AvailabilityTemplate: `{{ value_json.state }}`,
+			PayloadAvailable:     "online",
+			PayloadNotAvailable:  "offline",
+		},
+		ValueTemplate:       `{{ value_json.type }}`,
+		JSONAttributesTopic: fmt.Sprintf("%s/line/%d/last_event", c.topicPrefix, line),
+		Icon:                "mdi:phone-log",
+	}
+
+	discoveryTopic := fmt.Sprintf("homeassistant/sensor/fritz_callmonitor/line_%d_last_event/config", line)
+	return c.publishDiscoveryConfig(discoveryTopic, config)
+}
+
+// setupMSNCallHistoryDiscovery creates discovery config for MSN call history sensors
+func (c *Client) setupMSNCallHistoryDiscovery(msn string, device *HADevice) error {
+	config := &HASensorConfig{
+		HAEntityConfig: HAEntityConfig{
+			Name:                 fmt.Sprintf("FRITZ!Box MSN %s Call History", msn),
+			UniqueID:             fmt.Sprintf("fritz_callmonitor_msn_%s_call_history", msn),
+			StateTopic:           fmt.Sprintf("%s/msn/%s/call_history", c.topicPrefix, msn),
+			Device:               device,
+			AvailabilityTopic:    fmt.Sprintf("%s/status", c.topicPrefix),
+			AvailabilityTemplate: `{{ value_json.state }}`,
+			PayloadAvailable:     "online",
+			PayloadNotAvailable:  "offline",
+		},
+		ValueTemplate:       `{{ value_json.calls | length }}`,
+		JSONAttributesTopic: fmt.Sprintf("%s/msn/%s/call_history", c.topicPrefix, msn),
+		Icon:                "mdi:phone-log",
+		UnitOfMeasurement:   "calls",
+	}
+
+	discoveryTopic := fmt.Sprintf("homeassistant/sensor/fritz_callmonitor/msn_%s_call_history/config", msn)
+	return c.publishDiscoveryConfig(discoveryTopic, config)
+}
+
+// publishDiscoveryConfig publishes a discovery configuration to Home Assistant
+func (c *Client) publishDiscoveryConfig(topic string, config interface{}) error {
+	payload, err := json.Marshal(config)
+	if err != nil {
+		return fmt.Errorf("failed to marshal discovery config: %w", err)
+	}
+
+	if c.logLevel == "debug" {
+		log.Printf("Publishing HA discovery config to topic '%s'", topic)
+	}
+
+	// Discovery configs should be retained
+	token := c.client.Publish(topic, c.qos, true, payload)
+	if token.Wait() && token.Error() != nil {
+		return fmt.Errorf("failed to publish discovery config: %w", token.Error())
+	}
+
+	return nil
+}
+
+// removeHomeAssistantDiscovery removes Home Assistant MQTT Discovery configurations
+//
+//nolint:unused // Keep for future use or manual cleanup
+func (c *Client) removeHomeAssistantDiscovery() error {
+	if c.logLevel == "debug" {
+		log.Println("Removing Home Assistant MQTT Discovery configurations...")
+	}
+
+	// Remove discovery for line status sensors
+	for line := 0; line < 8; line++ {
+		statusTopic := fmt.Sprintf("homeassistant/sensor/fritz_callmonitor/line_%d_status/config", line)
+		if err := c.publishNull(statusTopic); err != nil {
+			log.Printf("Failed to remove line %d status discovery: %v", line, err)
+		}
+
+		eventTopic := fmt.Sprintf("homeassistant/sensor/fritz_callmonitor/line_%d_last_event/config", line)
+		if err := c.publishNull(eventTopic); err != nil {
+			log.Printf("Failed to remove line %d last_event discovery: %v", line, err)
+		}
+	}
+
+	// Remove discovery for MSN call history sensors
+	for msn := range c.msnCallHistories {
+		discoveryTopic := fmt.Sprintf("homeassistant/sensor/fritz_callmonitor/msn_%s_call_history/config", msn)
+		if err := c.publishNull(discoveryTopic); err != nil {
+			log.Printf("Failed to remove MSN %s call history discovery: %v", msn, err)
+		}
+	}
+
+	if c.logLevel == "debug" {
+		log.Println("Home Assistant MQTT Discovery cleanup completed")
+	}
 	return nil
 }

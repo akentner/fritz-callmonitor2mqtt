@@ -23,17 +23,17 @@ The application uses a migration system to manage database schema changes:
 ### Tables
 
 #### `calls`
-Stores call events from the Fritz!Box callmonitor:
+Stores call events from the FRITZ!Box callmonitor:
 
 - `id` - Primary key
-- `call_id` - Fritz!Box call identifier
+- `call_id` - FRITZ!Box call identifier
 - `timestamp` - When the call event occurred
 - `event_type` - Type of event (incoming, outgoing, connect, disconnect)
 - `caller` - Caller phone number
 - `called` - Called phone number
 - `caller_msn` - MSN if caller number ends with configured MSN *(Version 2+)*
 - `called_msn` - MSN if called number ends with configured MSN *(Version 2+)*
-- `line` - Fritz!Box line number
+- `line` - FRITZ!Box line number
 - `trunk` - Network trunk information
 - `duration` - Call duration in seconds (for connect/disconnect events)
 - `created_at` - Record creation timestamp

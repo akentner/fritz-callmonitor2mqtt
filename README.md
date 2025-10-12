@@ -1,14 +1,14 @@
 # fritz-callmonitor2mqtt
 
-Fritz!Box Callmonitor to MQTT Bridge
+FRITZ!Box Callmonitor to MQTT Bridge
 
 Alexander Kentner <github@akentner.de>
 
-A Go backend service that monitors the Fritz!Box callmonitor interface (TCP port 1012) and publishes call events to MQTT topics.
+A Go backend service that monitors the FRITZ!Box callmonitor interface (TCP port 1012) and publishes call events to MQTT topics.
 
 ## Features
 
-- **Real-time Call Monitoring**: Connects to Fritz!Box callmonitor interface
+- **Real-time Call Monitoring**: Connects to FRITZ!Box callmonitor interface
 - **MQTT Integration**: Publishes call events to MQTT broker with configurable topics
 - **Line Status Tracking**: Maintains current status for each phone line (idle/ring/active)
 - **Phone Number Name Mapping**: Store and retrieve contact names for phone numbers via RPC-style MQTT interface
@@ -78,14 +78,14 @@ The service includes a contact management system that allows associating phone n
 
 ### Prerequisites
 
-- Fritz!Box router with callmonitor enabled
+- FRITZ!Box router with callmonitor enabled
 - MQTT broker (e.g., Mosquitto, HiveMQ)
 - Go 1.21+ (for building from source)
 
 
-### Enable Fritz!Box Callmonitor
+### Enable FRITZ!Box Callmonitor
 
-First, enable the callmonitor on your Fritz!Box by dialing:
+First, enable the callmonitor on your FRITZ!Box by dialing:
 ```
 #96*5*
 ```
@@ -174,8 +174,8 @@ fritz-callmonitor2mqtt/
 
 Configure the application using environment variables:
 
-### Fritz!Box Settings
-- `FRITZ_CALLMONITOR_FRITZBOX_HOST` - Fritz!Box hostname (default: `fritz.box`)
+### FRITZ!Box Settings
+- `FRITZ_CALLMONITOR_FRITZBOX_HOST` - FRITZ!Box hostname (default: `fritz.box`)
 - `FRITZ_CALLMONITOR_FRITZBOX_PORT` - Callmonitor port (default: `1012`)
 
 ### MQTT Settings  

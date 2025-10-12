@@ -1,4 +1,4 @@
-# Fritz!Box Callmonitor Home Assistant Integration
+# FRITZ!Box Callmonitor Home Assistant Integration
 
 This directory contains examples for integrating fritz-callmonitor2mqtt with Home Assistant.
 

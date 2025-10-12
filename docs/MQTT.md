@@ -2,7 +2,7 @@
 
 ## Overview
 
-The fritz-callmonitor2mqtt service uses the Eclipse Paho MQTT Go client to publish Fritz!Box call events to an MQTT broker. This enables integration with home automation systems, monitoring dashboards, and other MQTT-aware applications.
+The fritz-callmonitor2mqtt service uses the Eclipse Paho MQTT Go client to publish FRITZ!Box call events to an MQTT broker. This enables integration with home automation systems, monitoring dashboards, and other MQTT-aware applications.
 
 ## MQTT Library
 

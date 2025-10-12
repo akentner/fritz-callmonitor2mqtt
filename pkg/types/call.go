@@ -44,7 +44,7 @@ type ExtensionInfo struct {
 	Type   string `json:"type"`   // Extension type: DECT, VOIP, VOICEBOX, ANALOG, UNKNOWN
 }
 
-// CallEvent represents a single call monitor event from Fritz!Box
+// CallEvent represents a single call monitor event from FRITZ!Box
 type CallEvent struct {
 	ID              string         `json:"id"` // UUID v7 for tracking calls across states
 	Timestamp       time.Time      `json:"timestamp"`
@@ -64,7 +64,7 @@ type CallEvent struct {
 	Duration        int            `json:"duration,omitempty"`         // Duration in seconds (for end events)
 	Status          CallStatus     `json:"status"`                     // Current FSM status
 	FinishState     *CallStatus    `json:"finish_state,omitempty"`     // Final status before idle (missedCall, notReached, finished)
-	RawMessage      string         `json:"raw_message,omitempty"`      // Original Fritz!Box message
+	RawMessage      string         `json:"raw_message,omitempty"`      // Original FRITZ!Box message
 }
 
 // LineStatus represents the current status of a phone line
@@ -81,6 +81,7 @@ type LineStatus struct {
 	Duration    *int                  `json:"duration,omitempty"`
 	LastEvent   string                `json:"last_event"`
 	LastUpdated time.Time             `json:"last_updated"`
+	Icon        string                `json:"icon"`
 }
 
 type LineStatusParticipant struct {

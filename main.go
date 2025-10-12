@@ -189,9 +189,9 @@ func (app *Application) Run() error {
 		default:
 		}
 
-		log.Println("Connecting to Fritz!Box callmonitor...")
+		log.Println("Connecting to FRITZ!Box callmonitor...")
 		if err := app.callmonitorClient.Connect(); err != nil {
-			log.Printf("Failed to connect to Fritz!Box: %v", err)
+			log.Printf("Failed to connect to FRITZ!Box: %v", err)
 			log.Printf("Retrying in %v...", app.config.App.ReconnectDelay)
 
 			select {
@@ -202,7 +202,7 @@ func (app *Application) Run() error {
 			}
 		}
 
-		log.Println("Connected to Fritz!Box callmonitor")
+		log.Println("Connected to FRITZ!Box callmonitor")
 
 		// Process events until connection is lost
 		if err := app.processEvents(); err != nil {
@@ -286,7 +286,7 @@ func (app *Application) Shutdown() {
 func printUsage() {
 	fmt.Printf(`Usage: fritz-callmonitor2mqtt [OPTIONS]
 
-Fritz!Box Callmonitor to MQTT Bridge - Monitors Fritz!Box call events and publishes them to MQTT.
+FRITZ!Box Callmonitor to MQTT Bridge - Monitors FRITZ!Box call events and publishes them to MQTT.
 
 Options:
   -version       Show version information
@@ -294,8 +294,8 @@ Options:
   -config-test   Test configuration and exit
 
 Configuration via Environment Variables:
-  FRITZ_CALLMONITOR_FRITZBOX_HOST            Fritz!Box hostname (default: fritz.box)
-  FRITZ_CALLMONITOR_FRITZBOX_PORT            Fritz!Box callmonitor port (default: 1012)
+  FRITZ_CALLMONITOR_FRITZBOX_HOST            FRITZ!Box hostname (default: fritz.box)
+  FRITZ_CALLMONITOR_FRITZBOX_PORT            FRITZ!Box callmonitor port (default: 1012)
   FRITZ_CALLMONITOR_MQTT_BROKER              MQTT broker hostname (default: localhost)
   FRITZ_CALLMONITOR_MQTT_PORT                MQTT broker port (default: 1883)
   FRITZ_CALLMONITOR_MQTT_USERNAME            MQTT username (optional)
@@ -318,7 +318,7 @@ Examples:
   fritz-callmonitor2mqtt -version                           # Show version
   fritz-callmonitor2mqtt -config-test                       # Test configuration
   
-  # With custom Fritz!Box
+  # With custom FRITZ!Box
   FRITZ_CALLMONITOR_FRITZBOX_HOST=192.168.1.1 fritz-callmonitor2mqtt
   
   # With custom MQTT broker
