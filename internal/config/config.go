@@ -64,11 +64,12 @@ type MQTTConfig struct {
 
 // AppConfig contains general application settings
 type AppConfig struct {
-	LogLevel        string        `mapstructure:"log_level"`
-	CallHistorySize int           `mapstructure:"call_history_size"`
-	ReconnectDelay  time.Duration `mapstructure:"reconnect_delay"`
-	HealthCheckPort int           `mapstructure:"health_check_port"`
-	Timezone        string        `mapstructure:"timezone"`
+	LogLevel           string        `mapstructure:"log_level"`
+	CallHistorySize    int           `mapstructure:"call_history_size"`
+	MSNCallHistorySize int           `mapstructure:"msn_call_history_size"`
+	ReconnectDelay     time.Duration `mapstructure:"reconnect_delay"`
+	HealthCheckPort    int           `mapstructure:"health_check_port"`
+	Timezone           string        `mapstructure:"timezone"`
 }
 
 // DatabaseConfig contains database settings
@@ -102,11 +103,12 @@ func LoadConfig() (*Config, error) {
 			ConnectTimeout: getEnvDurationOrDefault("FRITZ_CALLMONITOR_MQTT_CONNECT_TIMEOUT", 30*time.Second),
 		},
 		App: AppConfig{
-			LogLevel:        getEnvOrDefault("FRITZ_CALLMONITOR_APP_LOG_LEVEL", "info"),
-			CallHistorySize: getEnvIntOrDefault("FRITZ_CALLMONITOR_APP_CALL_HISTORY_SIZE", 50),
-			ReconnectDelay:  getEnvDurationOrDefault("FRITZ_CALLMONITOR_APP_RECONNECT_DELAY", 10*time.Second),
-			HealthCheckPort: getEnvIntOrDefault("FRITZ_CALLMONITOR_APP_HEALTH_CHECK_PORT", 8080),
-			Timezone:        getEnvOrDefault("FRITZ_CALLMONITOR_APP_TIMEZONE", "Europe/Berlin"),
+			LogLevel:           getEnvOrDefault("FRITZ_CALLMONITOR_APP_LOG_LEVEL", "info"),
+			CallHistorySize:    getEnvIntOrDefault("FRITZ_CALLMONITOR_APP_CALL_HISTORY_SIZE", 50),
+			MSNCallHistorySize: getEnvIntOrDefault("FRITZ_CALLMONITOR_APP_MSN_CALL_HISTORY_SIZE", 30),
+			ReconnectDelay:     getEnvDurationOrDefault("FRITZ_CALLMONITOR_APP_RECONNECT_DELAY", 10*time.Second),
+			HealthCheckPort:    getEnvIntOrDefault("FRITZ_CALLMONITOR_APP_HEALTH_CHECK_PORT", 8080),
+			Timezone:           getEnvOrDefault("FRITZ_CALLMONITOR_APP_TIMEZONE", "Europe/Berlin"),
 		},
 		Database: DatabaseConfig{
 			DataDir: getEnvOrDefault("FRITZ_CALLMONITOR_DATABASE_DATA_DIR", "./data"),
@@ -178,6 +180,10 @@ func (c *Config) Validate() error {
 
 	if c.App.CallHistorySize <= 0 {
 		return fmt.Errorf("call history size must be greater than 0")
+	}
+
+	if c.App.MSNCallHistorySize <= 0 {
+		return fmt.Errorf("MSN call history size must be greater than 0")
 	}
 
 	if c.App.Timezone != "" {
@@ -398,7 +404,7 @@ func (c *Config) LogConfigurationSummary() {
 
 	// MSN information
 	if len(c.PBX.MSN) > 0 {
-		fmt.Printf("   MSNs:      %s\n", strings.Join(c.PBX.MSN, ", "))
+		fmt.Printf("   MSNs:      %s (keep last %d calls per MSN)\n", strings.Join(c.PBX.MSN, ", "), c.App.MSNCallHistorySize)
 	} else {
 		fmt.Printf("   MSNs:      none configured\n")
 	}

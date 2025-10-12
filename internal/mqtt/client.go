@@ -40,11 +40,12 @@ type Client struct {
 	lineStatusExtensions   map[string]*types.LineStatusExtension
 	lineStatusParticipants map[string]*types.LineStatusParticipant
 	callHistory            *types.CallHistory
+	msnCallHistories       map[string]*types.MSNCallHistory
 }
 
 // NewClient creates a new MQTT client
-func NewClient(broker string, port int, username, password, clientID, topicPrefix string, qos byte, retain bool, keepAlive, connectTimeout time.Duration, logLevel string, db *database.Client) *Client {
-	return &Client{
+func NewClient(broker string, port int, username, password, clientID, topicPrefix string, qos byte, retain bool, keepAlive, connectTimeout time.Duration, logLevel string, db *database.Client, msns []string, msnCallHistorySize int) *Client {
+	client := &Client{
 		broker:                 broker,
 		port:                   port,
 		username:               username,
@@ -64,7 +65,22 @@ func NewClient(broker string, port int, username, password, clientID, topicPrefi
 			Calls:   make([]types.CallEvent, 0),
 			MaxSize: 50,
 		},
+		msnCallHistories: make(map[string]*types.MSNCallHistory),
 	}
+
+	// Initialize MSN call histories for each configured MSN
+	for _, msn := range msns {
+		if msn != "" {
+			client.msnCallHistories[msn] = &types.MSNCallHistory{
+				MSN:       msn,
+				Calls:     make([]types.MSNCallEvent, 0),
+				MaxSize:   msnCallHistorySize,
+				UpdatedAt: time.Now(),
+			}
+		}
+	}
+
+	return client
 }
 
 // Connect establishes connection to MQTT broker
@@ -158,6 +174,16 @@ func (c *Client) onConnect(client mqtt.Client) {
 	if err := c.subscribeToPhoneNumberRPC(); err != nil {
 		log.Printf("Failed to subscribe to phone number RPC topics: %v", err)
 	}
+
+	// Load MSN call histories from database and publish them
+	if err := c.LoadMSNCallHistoriesFromDB(); err != nil {
+		log.Printf("Failed to load MSN call histories from database: %v", err)
+	} else {
+		// Publish all MSN call histories
+		if err := c.PublishAllMSNCallHistories(); err != nil {
+			log.Printf("Failed to publish MSN call histories: %v", err)
+		}
+	}
 }
 
 // onConnectionLost is called when the MQTT connection is lost
@@ -186,6 +212,9 @@ func (c *Client) PublishCallEvent(event types.CallEvent) error {
 
 	// Update call history
 	c.callHistory.AddCall(event)
+
+	// Update MSN-specific call histories
+	c.updateMSNCallHistories(event)
 
 	// Update line status
 	lineKey := fmt.Sprintf("%s_%d", event.Trunk, event.Line)
@@ -394,6 +423,223 @@ func (c *Client) GetCallHistory() *types.CallHistory {
 	}
 	copy(historyCopy.Calls, c.callHistory.Calls)
 	return historyCopy
+}
+
+// updateMSNCallHistories updates MSN-specific call histories and publishes to MQTT
+func (c *Client) updateMSNCallHistories(event types.CallEvent) {
+	// Only process disconnect events
+	if event.Type != types.CallTypeDisconnect {
+		return
+	}
+
+	// Update all MSN histories that this call involves
+	msnsToUpdate := make([]string, 0)
+
+	if event.CallerMSN != "" {
+		msnsToUpdate = append(msnsToUpdate, event.CallerMSN)
+	}
+	if event.CalledMSN != "" && event.CalledMSN != event.CallerMSN {
+		msnsToUpdate = append(msnsToUpdate, event.CalledMSN)
+	}
+
+	for _, msn := range msnsToUpdate {
+		if history, exists := c.msnCallHistories[msn]; exists {
+			// Resolve caller and called names from database
+			var callerName, calledName string
+			if event.Caller != "" && c.db != nil {
+				if name, err := c.db.GetPhoneNumberName(event.Caller); err == nil && name != "" {
+					callerName = name
+				}
+			}
+			if event.Called != "" && c.db != nil {
+				if name, err := c.db.GetPhoneNumberName(event.Called); err == nil && name != "" {
+					calledName = name
+				}
+			}
+
+			// Determine direction for this MSN
+			var direction types.CallDirection
+			if event.CallerMSN == msn {
+				direction = types.CallDirectionOutbound
+			} else if event.CalledMSN == msn {
+				direction = types.CallDirectionInbound
+			}
+
+			// Convert CallEvent to MSNCallEvent
+			msnCallEvent := types.MSNCallEvent{
+				ID:          event.ID,
+				Timestamp:   event.Timestamp,
+				Direction:   direction,
+				Line:        event.Line,
+				Trunk:       event.Trunk,
+				Caller:      event.Caller,
+				Called:      event.Called,
+				CallerMSN:   event.CallerMSN,
+				CalledMSN:   event.CalledMSN,
+				CallerName:  callerName,
+				CalledName:  calledName,
+				Duration:    event.Duration,
+				FinishState: string(event.Status), // Use the current status as finish state
+			}
+
+			// Add to front of slice (newest first)
+			history.Calls = append([]types.MSNCallEvent{msnCallEvent}, history.Calls...)
+			if len(history.Calls) > history.MaxSize {
+				history.Calls = history.Calls[:history.MaxSize]
+			}
+			history.UpdatedAt = time.Now()
+
+			// Publish updated history
+			if c.connected {
+				if err := c.publishMSNCallHistory(msn, history); err != nil {
+					log.Printf("Failed to publish MSN call history for %s: %v", msn, err)
+				}
+			}
+		}
+	}
+}
+
+// publishMSNCallHistory publishes the call history for a specific MSN
+func (c *Client) publishMSNCallHistory(msn string, history *types.MSNCallHistory) error {
+	if !c.connected {
+		return fmt.Errorf("MQTT client not connected")
+	}
+
+	topic := fmt.Sprintf("%s/msn/%s/calls", c.topicPrefix, msn)
+	payload, err := json.Marshal(history)
+	if err != nil {
+		return fmt.Errorf("failed to marshal MSN call history: %w", err)
+	}
+
+	if c.logLevel == "debug" {
+		log.Printf("Publishing MSN call history to topic '%s': %d calls", topic, len(history.Calls))
+	}
+
+	return c.publish(topic, payload)
+}
+
+// LoadMSNCallHistoriesFromDB loads MSN call histories from database and populates in-memory histories
+func (c *Client) LoadMSNCallHistoriesFromDB() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.db == nil {
+		return fmt.Errorf("database client not available")
+	}
+
+	for msn, history := range c.msnCallHistories {
+		// Load calls from database for this MSN
+		dbCalls, err := c.db.GetCallsByMSN(msn, history.MaxSize)
+		if err != nil {
+			log.Printf("Failed to load calls from database for MSN %s: %v", msn, err)
+			continue
+		}
+
+		// Convert database calls to MSNCallEvents
+		msnCallEvents := make([]types.MSNCallEvent, 0)
+		for _, dbCall := range dbCalls {
+			// Skip calls without end timestamp
+			if dbCall.EndTimestamp == nil {
+				continue
+			}
+
+			// Helper function to safely dereference string pointers
+			safeString := func(s *string) string {
+				if s == nil {
+					return ""
+				}
+				return *s
+			}
+
+			// Helper function to safely dereference int pointers
+			safeInt := func(i *int) int {
+				if i == nil {
+					return 0
+				}
+				return *i
+			}
+
+			caller := safeString(dbCall.Caller)
+			called := safeString(dbCall.Called)
+			callerMSN := safeString(dbCall.CallerMSN)
+			calledMSN := safeString(dbCall.CalledMSN)
+
+			// Resolve caller and called names from database
+			var callerName, calledName string
+			if caller != "" {
+				if name, err := c.db.GetPhoneNumberName(caller); err == nil && name != "" {
+					callerName = name
+				}
+			}
+			if called != "" {
+				if name, err := c.db.GetPhoneNumberName(called); err == nil && name != "" {
+					calledName = name
+				}
+			}
+
+			// Determine direction based on MSN
+			var direction types.CallDirection
+			if callerMSN == msn {
+				direction = types.CallDirectionOutbound
+			} else if calledMSN == msn {
+				direction = types.CallDirectionInbound
+			}
+
+			// Get finish state
+			finishState := ""
+			if dbCall.FinishState != nil {
+				finishState = string(*dbCall.FinishState)
+			}
+
+			// Convert database Call to MSNCallEvent
+			msnCallEvent := types.MSNCallEvent{
+				ID:          dbCall.CallID.String(),
+				Timestamp:   *dbCall.EndTimestamp, // Use end timestamp for completed calls
+				Direction:   direction,
+				Line:        dbCall.Line,
+				Trunk:       safeString(dbCall.Trunk),
+				Caller:      caller,
+				Called:      called,
+				CallerMSN:   callerMSN,
+				CalledMSN:   calledMSN,
+				CallerName:  callerName,
+				CalledName:  calledName,
+				Duration:    safeInt(dbCall.Duration),
+				FinishState: finishState,
+			}
+
+			msnCallEvents = append(msnCallEvents, msnCallEvent)
+		}
+
+		// Update the in-memory history
+		history.Calls = msnCallEvents
+		history.UpdatedAt = time.Now()
+
+		if c.logLevel == "debug" {
+			log.Printf("Loaded %d calls from database for MSN %s", len(msnCallEvents), msn)
+		}
+	}
+
+	return nil
+}
+
+// PublishAllMSNCallHistories publishes all MSN call histories (typically called at startup)
+func (c *Client) PublishAllMSNCallHistories() error {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if !c.connected {
+		return fmt.Errorf("MQTT client not connected")
+	}
+
+	for msn, history := range c.msnCallHistories {
+		if err := c.publishMSNCallHistory(msn, history); err != nil {
+			log.Printf("Failed to publish MSN call history for %s: %v", msn, err)
+			// Continue with other MSNs even if one fails
+		}
+	}
+
+	return nil
 }
 
 // createStatusMessage creates a JSON payload for service status (online/offline)

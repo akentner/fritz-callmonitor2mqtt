@@ -8,8 +8,9 @@ import (
 	"fritz-callmonitor2mqtt/pkg/types"
 )
 
-func TestNewClient(t *testing.T) {
-	client := NewClient(
+// createTestClient creates a test MQTT client with default test parameters
+func createTestClient() *Client {
+	return NewClient(
 		"localhost",
 		1883,
 		"user",
@@ -22,7 +23,13 @@ func TestNewClient(t *testing.T) {
 		30*time.Second,
 		"info",
 		nil,
+		[]string{"12345", "67890"},
+		30,
 	)
+}
+
+func TestNewClient(t *testing.T) {
+	client := createTestClient()
 
 	if client.broker != "localhost" {
 		t.Errorf("Expected broker 'localhost', got %s", client.broker)
@@ -42,11 +49,7 @@ func TestNewClient(t *testing.T) {
 }
 
 func TestLineStatusManagement(t *testing.T) {
-	client := NewClient(
-		"localhost", 1883, "", "", "test", "test", 1, true,
-		60*time.Second, 30*time.Second, "info",
-		nil,
-	)
+	client := createTestClient()
 
 	// Create test event
 	event := types.CallEvent{
@@ -88,11 +91,7 @@ func TestLineStatusManagement(t *testing.T) {
 }
 
 func TestCallHistoryLimit(t *testing.T) {
-	client := NewClient(
-		"localhost", 1883, "", "", "test", "test", 1, true,
-		60*time.Second, 30*time.Second, "info",
-		nil,
-	)
+	client := createTestClient()
 
 	// Set smaller history size for testing
 	client.callHistory.MaxSize = 3
@@ -125,11 +124,7 @@ func TestCallHistoryLimit(t *testing.T) {
 }
 
 func TestIsConnected(t *testing.T) {
-	client := NewClient(
-		"localhost", 1883, "", "", "test", "test", 1, true,
-		60*time.Second, 30*time.Second, "info",
-		nil,
-	)
+	client := createTestClient()
 
 	if client.IsConnected() {
 		t.Error("Expected client to be disconnected initially")
@@ -144,11 +139,7 @@ func TestIsConnected(t *testing.T) {
 }
 
 func TestCreateStatusMessage(t *testing.T) {
-	client := NewClient(
-		"localhost", 1883, "", "", "test", "test", 1, true,
-		60*time.Second, 30*time.Second, "info",
-		nil,
-	)
+	client := createTestClient()
 
 	// Test online status message
 	onlinePayload, err := client.createStatusMessage("online")
@@ -190,11 +181,7 @@ func TestCreateStatusMessage(t *testing.T) {
 }
 
 func TestCallEventStatusMapping(t *testing.T) {
-	client := NewClient(
-		"localhost", 1883, "", "", "test", "test", 1, true,
-		60*time.Second, 30*time.Second, "info",
-		nil,
-	)
+	client := createTestClient()
 
 	// Test different call types and their expected status mappings
 	testCases := []struct {
@@ -273,14 +260,14 @@ func TestFSMDebugTopicsOnlyOnDebugLevel(t *testing.T) {
 	clientInfo := NewClient(
 		"localhost", 1883, "", "", "test", "test", 1, true,
 		60*time.Second, 30*time.Second, "info",
-		nil,
+		nil, []string{}, 30,
 	)
 
 	// Test with debug log level - FSM topics should be published
 	clientDebug := NewClient(
 		"localhost", 1883, "", "", "test", "test", 1, true,
 		60*time.Second, 30*time.Second, "debug",
-		nil,
+		nil, []string{}, 30,
 	)
 
 	// Verify log level is set correctly

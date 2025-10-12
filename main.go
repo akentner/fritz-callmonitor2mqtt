@@ -91,6 +91,8 @@ func main() {
 		cfg.MQTT.ConnectTimeout,
 		cfg.App.LogLevel,
 		dbClient,
+		cfg.PBX.MSN,
+		cfg.App.MSNCallHistorySize,
 	)
 
 	// Connect to database

@@ -376,6 +376,63 @@ func (c *Client) GetCallsByLine(line int, limit int) ([]Call, error) {
 	return calls, nil
 }
 
+// GetCallsByMSN retrieves all completed calls for a specific MSN, ordered by end timestamp DESC
+func (c *Client) GetCallsByMSN(msn string, limit int) ([]Call, error) {
+	if c.db == nil {
+		return nil, fmt.Errorf("database not connected")
+	}
+
+	// Only get completed calls that involve this MSN
+	// Completed calls have end_timestamp AND finish_state (finished, missedCall, notReached)
+	query := `SELECT call_id, line, status, finish_state, caller, called, caller_msn, 
+		called_msn, trunk, start_timestamp, connect_timestamp, end_timestamp, 
+		duration, created_at, updated_at FROM calls 
+		WHERE (caller_msn = ? OR called_msn = ?) AND end_timestamp IS NOT NULL AND finish_state IS NOT NULL
+		ORDER BY end_timestamp DESC LIMIT ?`
+
+	rows, err := c.db.Query(query, msn, msn, limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query calls by MSN: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var calls []Call
+	for rows.Next() {
+		var call Call
+		var callIDStr string
+		var finishStateStr *string
+
+		err := rows.Scan(&callIDStr, &call.Line, (*string)(&call.Status), &finishStateStr,
+			&call.Caller, &call.Called, &call.CallerMSN, &call.CalledMSN, &call.Trunk,
+			&call.StartTimestamp, &call.ConnectTimestamp, &call.EndTimestamp,
+			&call.Duration, &call.CreatedAt, &call.UpdatedAt)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan call: %w", err)
+		}
+
+		// Parse call ID
+		callID, err := uuid.Parse(callIDStr)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse call ID: %w", err)
+		}
+		call.CallID = callID
+
+		// Parse finish state if present
+		if finishStateStr != nil {
+			finishState := types.CallStatus(*finishStateStr)
+			call.FinishState = &finishState
+		}
+
+		calls = append(calls, call)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating calls by MSN: %w", err)
+	}
+
+	return calls, nil
+}
+
 // PhoneNumber represents a phone number with an associated name
 type PhoneNumber struct {
 	PhoneNumber string    `db:"phone_number"`
