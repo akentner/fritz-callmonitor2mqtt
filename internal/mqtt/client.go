@@ -931,7 +931,7 @@ func (c *Client) bootstrapLineStatuses() error {
 
 		// Found real call data - create line status from most recent call
 		lastCall := calls[0]
-		
+
 		// Get names for phone numbers
 		var callerName, calledName string
 		if lastCall.Caller != nil {
@@ -953,24 +953,39 @@ func (c *Client) bootstrapLineStatuses() error {
 		}
 
 		lineStatus := &types.LineStatus{
-			ID:        lastCall.CallID.String(),
-			Line:      line,
-			Trunk:     func() string { if lastCall.Trunk != nil { return *lastCall.Trunk }; return fmt.Sprintf("SIP%d", line) }(),
-			Direction: func() types.CallDirection { 
+			ID:   lastCall.CallID.String(),
+			Line: line,
+			Trunk: func() string {
+				if lastCall.Trunk != nil {
+					return *lastCall.Trunk
+				}
+				return fmt.Sprintf("SIP%d", line)
+			}(),
+			Direction: func() types.CallDirection {
 				if lastCall.CallerMSN != nil {
 					return types.CallDirectionOutbound
 				}
 				return types.CallDirectionInbound
 			}(),
-			Status:      currentStatus,
-			Extension:   types.LineStatusExtension{ID: "", Name: ""},
-			Caller:      types.LineStatusParticipant{
-				PhoneNumber: func() string { if lastCall.Caller != nil { return *lastCall.Caller }; return "" }(),
-				Name:        callerName,
+			Status:    currentStatus,
+			Extension: types.LineStatusExtension{ID: "", Name: ""},
+			Caller: types.LineStatusParticipant{
+				PhoneNumber: func() string {
+					if lastCall.Caller != nil {
+						return *lastCall.Caller
+					}
+					return ""
+				}(),
+				Name: callerName,
 			},
-			Called:      types.LineStatusParticipant{
-				PhoneNumber: func() string { if lastCall.Called != nil { return *lastCall.Called }; return "" }(),
-				Name:        calledName,
+			Called: types.LineStatusParticipant{
+				PhoneNumber: func() string {
+					if lastCall.Called != nil {
+						return *lastCall.Called
+					}
+					return ""
+				}(),
+				Name: calledName,
 			},
 			LastEvent:   fmt.Sprintf("Database bootstrap - %s", string(currentStatus)),
 			LastUpdated: time.Now(),

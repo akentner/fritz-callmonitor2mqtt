@@ -53,6 +53,22 @@ RUN chown -R $USERNAME:$USERNAME /workspaces
 # Switch to vscode user
 USER $USERNAME
 
+# Add useful bash aliases to .bashrc
+RUN echo 'alias s="git status"' >> ~/.bashrc && \
+    echo 'alias ga="git add"' >> ~/.bashrc && \
+    echo 'alias gc="git commit"' >> ~/.bashrc && \
+    echo 'alias gd="git diff"' >> ~/.bashrc && \
+    echo 'alias gl="git log --oneline"' >> ~/.bashrc && \
+    echo 'alias gp="git push"' >> ~/.bashrc && \
+    echo 'alias gb="git branch"' >> ~/.bashrc && \
+    echo 'alias gco="git checkout"' >> ~/.bashrc
+
+# Configure git aliases globally
+RUN git config --global alias.lg "log --oneline" && \
+    git config --global alias.s "status" && \
+    git config --global alias.co "checkout" && \
+    git config --global alias.amend "commit --amend"
+
 # Set environment variables for Go
 ENV GOPATH=/go
 ENV PATH=$GOPATH/bin:$PATH
