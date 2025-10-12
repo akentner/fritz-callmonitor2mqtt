@@ -505,7 +505,7 @@ func (c *Client) publishMSNCallHistory(msn string, history *types.MSNCallHistory
 		return fmt.Errorf("MQTT client not connected")
 	}
 
-	topic := fmt.Sprintf("%s/msn/%s/calls", c.topicPrefix, msn)
+	topic := fmt.Sprintf("%s/msn/%s/call_history", c.topicPrefix, msn)
 	payload, err := json.Marshal(history)
 	if err != nil {
 		return fmt.Errorf("failed to marshal MSN call history: %w", err)
