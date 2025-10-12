@@ -102,19 +102,17 @@ type CallHistory struct {
 
 // MSNCallEvent represents a call event optimized for MSN call history
 type MSNCallEvent struct {
-	ID          string        `json:"id"`
-	Timestamp   time.Time     `json:"timestamp"`
-	Direction   CallDirection `json:"direction"`
-	Line        int           `json:"line"`
-	Trunk       string        `json:"trunk,omitempty"`
-	Caller      string        `json:"caller"`
-	Called      string        `json:"called"`
-	CallerMSN   string        `json:"caller_msn,omitempty"`
-	CalledMSN   string        `json:"called_msn,omitempty"`
-	CallerName  string        `json:"caller_name,omitempty"`
-	CalledName  string        `json:"called_name,omitempty"`
-	Duration    int           `json:"duration,omitempty"`
-	FinishState string        `json:"finish_state"`
+	ID          string                `json:"id"`
+	Timestamp   time.Time             `json:"timestamp"`
+	Direction   CallDirection         `json:"direction"`
+	Line        int                   `json:"line"`
+	Trunk       string                `json:"trunk,omitempty"`
+	Caller      LineStatusParticipant `json:"caller"`
+	Called      LineStatusParticipant `json:"called"`
+	CallerMSN   string                `json:"caller_msn,omitempty"`
+	CalledMSN   string                `json:"called_msn,omitempty"`
+	Duration    int                   `json:"duration,omitempty"`
+	FinishState string                `json:"finish_state"`
 }
 
 // MSNCallHistory represents call history for a specific MSN
@@ -160,12 +158,17 @@ func (mh *MSNCallHistory) AddCall(event CallEvent) {
 		Direction: event.Direction,
 		Line:      event.Line,
 		Trunk:     event.Trunk,
-		Caller:    event.Caller,
-		Called:    event.Called,
+		Caller: LineStatusParticipant{
+			PhoneNumber: event.Caller,
+			Name:        event.CallerName,
+		},
+		Called: LineStatusParticipant{
+			PhoneNumber: event.Called,
+			Name:        event.CalledName,
+		},
 		CallerMSN: event.CallerMSN,
 		CalledMSN: event.CalledMSN,
 		Duration:  event.Duration,
-		// CallerName and CalledName will be resolved later
 		// FinishState will be set from event.Status or derived
 	}
 

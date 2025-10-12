@@ -467,17 +467,21 @@ func (c *Client) updateMSNCallHistories(event types.CallEvent) {
 
 			// Convert CallEvent to MSNCallEvent
 			msnCallEvent := types.MSNCallEvent{
-				ID:          event.ID,
-				Timestamp:   event.Timestamp,
-				Direction:   direction,
-				Line:        event.Line,
-				Trunk:       event.Trunk,
-				Caller:      event.Caller,
-				Called:      event.Called,
+				ID:        event.ID,
+				Timestamp: event.Timestamp,
+				Direction: direction,
+				Line:      event.Line,
+				Trunk:     event.Trunk,
+				Caller: types.LineStatusParticipant{
+					PhoneNumber: event.Caller,
+					Name:        callerName,
+				},
+				Called: types.LineStatusParticipant{
+					PhoneNumber: event.Called,
+					Name:        calledName,
+				},
 				CallerMSN:   event.CallerMSN,
 				CalledMSN:   event.CalledMSN,
-				CallerName:  callerName,
-				CalledName:  calledName,
 				Duration:    event.Duration,
 				FinishState: string(event.Status), // Use the current status as finish state
 			}
@@ -593,17 +597,21 @@ func (c *Client) LoadMSNCallHistoriesFromDB() error {
 
 			// Convert database Call to MSNCallEvent
 			msnCallEvent := types.MSNCallEvent{
-				ID:          dbCall.CallID.String(),
-				Timestamp:   *dbCall.EndTimestamp, // Use end timestamp for completed calls
-				Direction:   direction,
-				Line:        dbCall.Line,
-				Trunk:       safeString(dbCall.Trunk),
-				Caller:      caller,
-				Called:      called,
+				ID:        dbCall.CallID.String(),
+				Timestamp: *dbCall.EndTimestamp, // Use end timestamp for completed calls
+				Direction: direction,
+				Line:      dbCall.Line,
+				Trunk:     safeString(dbCall.Trunk),
+				Caller: types.LineStatusParticipant{
+					PhoneNumber: caller,
+					Name:        callerName,
+				},
+				Called: types.LineStatusParticipant{
+					PhoneNumber: called,
+					Name:        calledName,
+				},
 				CallerMSN:   callerMSN,
 				CalledMSN:   calledMSN,
-				CallerName:  callerName,
-				CalledName:  calledName,
 				Duration:    safeInt(dbCall.Duration),
 				FinishState: finishState,
 			}
@@ -864,4 +872,135 @@ func (c *Client) publishRPCError(requestID, errorMsg string) {
 	if err := c.publishRPCResponse(response); err != nil {
 		log.Printf("Failed to publish RPC error response: %v", err)
 	}
+}
+
+// BootstrapFromDatabase loads current state from database and publishes initial MQTT messages
+func (c *Client) BootstrapFromDatabase() error {
+	log.Println("Bootstrapping MQTT state from database...")
+
+	// 1. Bootstrap line statuses with real database data
+	if err := c.bootstrapLineStatuses(); err != nil {
+		log.Printf("Failed to bootstrap line statuses: %v", err)
+		return err
+	}
+
+	// 2. Bootstrap MSN call histories
+	if err := c.LoadMSNCallHistoriesFromDB(); err != nil {
+		log.Printf("Failed to load MSN call histories: %v", err)
+		return err
+	}
+
+	// 3. Publish all MSN call histories
+	if err := c.PublishAllMSNCallHistories(); err != nil {
+		log.Printf("Failed to publish MSN call histories: %v", err)
+		return err
+	}
+
+	log.Println("Database bootstrap completed")
+	return nil
+}
+
+// bootstrapLineStatuses creates line status based on real database events or publishes null for unused lines
+func (c *Client) bootstrapLineStatuses() error {
+	log.Println("Bootstrapping line statuses...")
+
+	if c.db == nil {
+		log.Println("No database available, skipping line status bootstrap")
+		return nil
+	}
+
+	// Check typical Fritz!Box lines (0-7)
+	for line := 0; line <= 7; line++ {
+		// Try to get the most recent call for this line from database
+		calls, err := c.db.GetCallsByLine(line, 1)
+		if err != nil {
+			log.Printf("Failed to query calls for line %d: %v", line, err)
+			continue
+		}
+
+		if len(calls) == 0 {
+			// No calls found for this line - send retained null message
+			topic := fmt.Sprintf("%s/line/%d/status", c.topicPrefix, line)
+			if err := c.publishNull(topic); err != nil {
+				log.Printf("Failed to publish null message for line %d: %v", line, err)
+			} else {
+				log.Printf("Published null message for unused line %d", line)
+			}
+			continue
+		}
+
+		// Found real call data - create line status from most recent call
+		lastCall := calls[0]
+		
+		// Get names for phone numbers
+		var callerName, calledName string
+		if lastCall.Caller != nil {
+			if name, err := c.db.GetPhoneNumberName(*lastCall.Caller); err == nil && name != "" {
+				callerName = name
+			}
+		}
+		if lastCall.Called != nil {
+			if name, err := c.db.GetPhoneNumberName(*lastCall.Called); err == nil && name != "" {
+				calledName = name
+			}
+		}
+
+		// Determine current status (finished calls should show as idle)
+		currentStatus := types.CallStatusIdle
+		if lastCall.FinishState == nil {
+			// Call is still ongoing, use the stored status
+			currentStatus = lastCall.Status
+		}
+
+		lineStatus := &types.LineStatus{
+			ID:        lastCall.CallID.String(),
+			Line:      line,
+			Trunk:     func() string { if lastCall.Trunk != nil { return *lastCall.Trunk }; return fmt.Sprintf("SIP%d", line) }(),
+			Direction: func() types.CallDirection { 
+				if lastCall.CallerMSN != nil {
+					return types.CallDirectionOutbound
+				}
+				return types.CallDirectionInbound
+			}(),
+			Status:      currentStatus,
+			Extension:   types.LineStatusExtension{ID: "", Name: ""},
+			Caller:      types.LineStatusParticipant{
+				PhoneNumber: func() string { if lastCall.Caller != nil { return *lastCall.Caller }; return "" }(),
+				Name:        callerName,
+			},
+			Called:      types.LineStatusParticipant{
+				PhoneNumber: func() string { if lastCall.Called != nil { return *lastCall.Called }; return "" }(),
+				Name:        calledName,
+			},
+			LastEvent:   fmt.Sprintf("Database bootstrap - %s", string(currentStatus)),
+			LastUpdated: time.Now(),
+		}
+
+		// Publish line status
+		if err := c.publishLineStatus(lineStatus); err != nil {
+			log.Printf("Failed to publish bootstrap line %d status: %v", line, err)
+		} else {
+			log.Printf("Published bootstrap status for line %d from database (status: %s)", line, currentStatus)
+		}
+	}
+
+	log.Printf("Line status bootstrap completed")
+	return nil
+}
+
+// publishNull sends a retained null message to clear a topic
+func (c *Client) publishNull(topic string) error {
+	if c.client == nil || !c.client.IsConnected() {
+		return fmt.Errorf("MQTT client not connected")
+	}
+
+	log.Printf("Publishing null message to topic '%s'", topic)
+
+	// Send empty byte slice with retain=true to clear the topic
+	token := c.client.Publish(topic, c.qos, true, []byte{})
+	if token.Wait() && token.Error() != nil {
+		return fmt.Errorf("failed to publish null message: %w", token.Error())
+	}
+
+	return nil
 }

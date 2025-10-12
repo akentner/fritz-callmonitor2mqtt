@@ -175,6 +175,12 @@ func (app *Application) Run() error {
 	}
 	log.Println("Connected to MQTT broker")
 
+	// Bootstrap MQTT state from database
+	if err := app.mqttClient.BootstrapFromDatabase(); err != nil {
+		log.Printf("Bootstrap from database failed: %v", err)
+		// Continue anyway - this is not critical
+	}
+
 	// Main connection loop with retry logic
 	for {
 		select {
