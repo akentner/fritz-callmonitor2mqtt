@@ -30,6 +30,7 @@ The service publishes to the following MQTT topics (with configurable prefix):
 - `{prefix}/line/{line_id}/status` - Current status of each phone line (retained)
 - `{prefix}/line/{line_id}/last_event` - Last event for each line (retained)
 - `{prefix}/history` - Last 50 calls as JSON array (retained) 
+- `{prefix}/msn/{msn}/calls` - Last 30 completed calls per MSN (retained)
 - `{prefix}/events/{call_type}` - Individual call events by type:
   - `ring` - Incoming call started
   - `call` - Outgoing call started  
@@ -190,6 +191,7 @@ Configure the application using environment variables:
 ### Application Settings
 - `FRITZ_CALLMONITOR_APP_LOG_LEVEL` - Log level (default: `info`)
 - `FRITZ_CALLMONITOR_APP_CALL_HISTORY_SIZE` - Number of calls to keep (default: `50`)
+- `FRITZ_CALLMONITOR_APP_MSN_CALL_HISTORY_SIZE` - Number of completed calls to keep per MSN (default: `30`)
 - `FRITZ_CALLMONITOR_APP_RECONNECT_DELAY` - Reconnection delay (default: `10s`)
 - `FRITZ_CALLMONITOR_APP_HEALTH_CHECK_PORT` - Health check port (default: `8080`)
 - `FRITZ_CALLMONITOR_APP_TIMEZONE` - Timezone for timestamp parsing (default: `Europe/Berlin`)

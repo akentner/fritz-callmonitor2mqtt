@@ -51,8 +51,9 @@ func TestConfigTimezone(t *testing.T) {
 					Port:   1883,
 				},
 				App: AppConfig{
-					CallHistorySize: 50,
-					Timezone:        tt.timezone,
+					CallHistorySize:    50,
+					MSNCallHistorySize: 30,
+					Timezone:           tt.timezone,
 				},
 				Database: DatabaseConfig{
 					DataDir: "./data",

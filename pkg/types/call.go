@@ -100,6 +100,31 @@ type CallHistory struct {
 	UpdatedAt time.Time   `json:"updated_at"`
 }
 
+// MSNCallEvent represents a call event optimized for MSN call history
+type MSNCallEvent struct {
+	ID          string        `json:"id"`
+	Timestamp   time.Time     `json:"timestamp"`
+	Direction   CallDirection `json:"direction"`
+	Line        int           `json:"line"`
+	Trunk       string        `json:"trunk,omitempty"`
+	Caller      string        `json:"caller"`
+	Called      string        `json:"called"`
+	CallerMSN   string        `json:"caller_msn,omitempty"`
+	CalledMSN   string        `json:"called_msn,omitempty"`
+	CallerName  string        `json:"caller_name,omitempty"`
+	CalledName  string        `json:"called_name,omitempty"`
+	Duration    int           `json:"duration,omitempty"`
+	FinishState string        `json:"finish_state"`
+}
+
+// MSNCallHistory represents call history for a specific MSN
+type MSNCallHistory struct {
+	MSN       string         `json:"msn"`
+	Calls     []MSNCallEvent `json:"calls"`
+	MaxSize   int            `json:"max_size"`
+	UpdatedAt time.Time      `json:"updated_at"`
+}
+
 // ServiceStatus represents the online/offline status of the service
 type ServiceStatus struct {
 	State       string    `json:"state"`        // "online" or "offline"
@@ -113,6 +138,43 @@ func (ch *CallHistory) AddCall(event CallEvent) {
 		ch.Calls = ch.Calls[:ch.MaxSize]
 	}
 	ch.UpdatedAt = time.Now()
+}
+
+// AddCall adds a new call to the MSN-specific history, but only if the call involves this MSN
+// and is a completed call (disconnect event). Maintains maximum size with newest calls first.
+func (mh *MSNCallHistory) AddCall(event CallEvent) {
+	// Only add completed calls (disconnect events) that involve this MSN
+	if event.Type != CallTypeDisconnect {
+		return
+	}
+
+	// Check if this call involves the MSN (either caller or called)
+	if event.CallerMSN != mh.MSN && event.CalledMSN != mh.MSN {
+		return
+	}
+
+	// Convert CallEvent to MSNCallEvent
+	msnEvent := MSNCallEvent{
+		ID:        event.ID,
+		Timestamp: event.Timestamp,
+		Direction: event.Direction,
+		Line:      event.Line,
+		Trunk:     event.Trunk,
+		Caller:    event.Caller,
+		Called:    event.Called,
+		CallerMSN: event.CallerMSN,
+		CalledMSN: event.CalledMSN,
+		Duration:  event.Duration,
+		// CallerName and CalledName will be resolved later
+		// FinishState will be set from event.Status or derived
+	}
+
+	// Add to front of slice (newest first)
+	mh.Calls = append([]MSNCallEvent{msnEvent}, mh.Calls...)
+	if len(mh.Calls) > mh.MaxSize {
+		mh.Calls = mh.Calls[:mh.MaxSize]
+	}
+	mh.UpdatedAt = time.Now()
 }
 
 // DetectMSN checks if a phone number ends with one of the configured MSNs
