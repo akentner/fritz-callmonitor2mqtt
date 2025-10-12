@@ -145,5 +145,16 @@ CREATE INDEX IF NOT EXISTS idx_phone_numbers_name ON phone_numbers(name);`,
 DROP INDEX IF EXISTS idx_phone_numbers_name;
 DROP TABLE IF EXISTS phone_numbers;`,
 		},
+		{
+			Version:     5,
+			Name:        "add_caller_called_indexes",
+			Description: "Add indexes for calls.caller and calls.called for faster phone number lookups",
+			UpSQL: `-- Add indexes for faster phone number queries
+CREATE INDEX IF NOT EXISTS idx_calls_caller ON calls(caller);
+CREATE INDEX IF NOT EXISTS idx_calls_called ON calls(called);`,
+			DownSQL: `-- Remove caller and called indexes
+DROP INDEX IF EXISTS idx_calls_called;
+DROP INDEX IF EXISTS idx_calls_caller;`,
+		},
 	}
 }
