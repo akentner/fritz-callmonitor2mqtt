@@ -347,6 +347,22 @@ func (c *Client) publish(topic string, payload []byte) error {
 	return nil
 }
 
+// publishWithoutRetain publishes a message without retain flag (for call history topics)
+func (c *Client) publishWithoutRetain(topic string, payload []byte) error {
+	if c.client == nil || !c.client.IsConnected() {
+		return fmt.Errorf("MQTT client not connected")
+	}
+
+	log.Printf("Publishing to topic '%s' (no retain): %s", topic, string(payload))
+
+	token := c.client.Publish(topic, c.qos, false, payload)
+	if token.Wait() && token.Error() != nil {
+		return fmt.Errorf("failed to publish message: %w", token.Error())
+	}
+
+	return nil
+}
+
 // getOrCreateLineStatus gets or creates a line status entry
 func (c *Client) getOrCreateLineStatus(key string, event types.CallEvent) *types.LineStatus {
 	if status, exists := c.lineStatuses[key]; exists {
@@ -503,7 +519,7 @@ func (c *Client) updateMSNCallHistories(event types.CallEvent) {
 	}
 }
 
-// publishMSNCallHistory publishes the call history for a specific MSN
+// publishMSNCallHistory publishes the call history for a specific MSN (without retain to avoid republishing loops)
 func (c *Client) publishMSNCallHistory(msn string, history *types.MSNCallHistory) error {
 	if !c.connected {
 		return fmt.Errorf("MQTT client not connected")
@@ -519,7 +535,7 @@ func (c *Client) publishMSNCallHistory(msn string, history *types.MSNCallHistory
 		log.Printf("Publishing MSN call history to topic '%s': %d calls", topic, len(history.Calls))
 	}
 
-	return c.publish(topic, payload)
+	return c.publishWithoutRetain(topic, payload)
 }
 
 // LoadMSNCallHistoriesFromDB loads MSN call histories from database and populates in-memory histories
