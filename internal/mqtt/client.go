@@ -9,6 +9,7 @@ import (
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 
+	"fritz-callmonitor2mqtt/internal/config"
 	"fritz-callmonitor2mqtt/internal/database"
 	"fritz-callmonitor2mqtt/pkg/types"
 )
@@ -30,6 +31,9 @@ type Client struct {
 	// Database client
 	db *database.Client
 
+	// PBX configuration for extension info
+	pbxConfig *config.PBXConfig
+
 	// MQTT client
 	client mqtt.Client
 
@@ -44,7 +48,7 @@ type Client struct {
 }
 
 // NewClient creates a new MQTT client
-func NewClient(broker string, port int, username, password, clientID, topicPrefix string, qos byte, retain bool, keepAlive, connectTimeout time.Duration, logLevel string, db *database.Client, msns []string, msnCallHistorySize int) *Client {
+func NewClient(broker string, port int, username, password, clientID, topicPrefix string, qos byte, retain bool, keepAlive, connectTimeout time.Duration, logLevel string, db *database.Client, pbxConfig *config.PBXConfig, msns []string, msnCallHistorySize int) *Client {
 	client := &Client{
 		broker:                 broker,
 		port:                   port,
@@ -58,6 +62,7 @@ func NewClient(broker string, port int, username, password, clientID, topicPrefi
 		connectTimeout:         connectTimeout,
 		logLevel:               logLevel,
 		db:                     db,
+		pbxConfig:              pbxConfig,
 		lineStatuses:           make(map[string]*types.LineStatus),
 		lineStatusExtensions:   make(map[string]*types.LineStatusExtension),
 		lineStatusParticipants: make(map[string]*types.LineStatusParticipant),
@@ -229,6 +234,14 @@ func (c *Client) PublishCallEvent(event types.CallEvent) error {
 	// Update line status
 	lineKey := fmt.Sprintf("%s_%d", event.Trunk, event.Line)
 	lineStatus := c.getOrCreateLineStatus(lineKey, event)
+
+	// Update extension information if available in event
+	if event.Extension != "" {
+		lineStatus.Extension = c.getOrCreateLineStatusExtension(event.Extension, "")
+	} else {
+		// Set extension to nil if no extension info available
+		lineStatus.Extension = nil
+	}
 
 	// Use FSM status if available, otherwise fall back to call type mapping
 	if event.Status != "" {
@@ -402,13 +415,18 @@ func (c *Client) getOrCreateLineStatus(key string, event types.CallEvent) *types
 		return status
 	}
 
+	var extension *types.LineStatusExtension
+	if event.Extension != "" {
+		extension = c.getOrCreateLineStatusExtension(event.Extension, "")
+	}
+
 	status := &types.LineStatus{
 		ID:          event.ID,
 		Line:        event.Line,
 		Trunk:       event.Trunk,
 		Direction:   event.Direction,
 		Status:      types.CallStatusIdle,
-		Extension:   *c.getOrCreateLineStatusExtension(event.Extension, ""),
+		Extension:   extension,
 		Caller:      *c.getOrCreateLineStatusParticipant(event.Caller, ""),
 		Called:      *c.getOrCreateLineStatusParticipant(event.Called, ""),
 		LastEvent:   event.RawMessage,
@@ -437,9 +455,21 @@ func (c *Client) getOrCreateLineStatusExtension(key string, name string) *types.
 		return extension
 	}
 
+	// Try to get extension info from PBX configuration
+	extensionName := name
+	extensionType := "UNKNOWN"
+
+	if c.pbxConfig != nil {
+		if extInfo := c.pbxConfig.GetExtensionInfo(key); extInfo != nil {
+			extensionName = extInfo.Name
+			extensionType = extInfo.Type
+		}
+	}
+
 	extension := &types.LineStatusExtension{
 		ID:   key,
-		Name: name,
+		Name: extensionName,
+		Type: extensionType,
 	}
 	c.lineStatusExtensions[key] = extension
 	return extension
@@ -529,10 +559,12 @@ func (c *Client) updateMSNCallHistories(event types.CallEvent) {
 					PhoneNumber: event.Called,
 					Name:        calledName,
 				},
-				CallerMSN:   event.CallerMSN,
-				CalledMSN:   event.CalledMSN,
-				Duration:    event.Duration,
-				FinishState: string(event.Status), // Use the current status as finish state
+				CallerMSN:       event.CallerMSN,
+				CalledMSN:       event.CalledMSN,
+				CallerExtension: event.CallerExtension,
+				CalledExtension: event.CalledExtension,
+				Duration:        event.Duration,
+				FinishState:     string(event.Status), // Use the current status as finish state
 			}
 
 			// Add to front of slice (newest first)
@@ -1017,7 +1049,7 @@ func (c *Client) bootstrapLineStatuses() error {
 				return types.CallDirectionInbound
 			}(),
 			Status:    currentStatus,
-			Extension: types.LineStatusExtension{ID: "", Name: ""},
+			Extension: nil, // No extension info available during bootstrap
 			Caller: types.LineStatusParticipant{
 				PhoneNumber: func() string {
 					if lastCall.Caller != nil {

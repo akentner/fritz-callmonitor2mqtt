@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// CallType represents the type of call event
+// CallType represents the ty	Extension   *LineStatusExtension   `json:"extension"`e of call event
 type CallType string
 
 const (
@@ -73,7 +73,7 @@ type LineStatus struct {
 	Line        int                   `json:"line"`
 	Trunk       string                `json:"trunk"`
 	Direction   CallDirection         `json:"direction"`
-	Extension   LineStatusExtension   `json:"extension"`
+	Extension   *LineStatusExtension  `json:"extension"`
 	Status      CallStatus            `json:"status"`
 	FinishState *CallStatus           `json:"finish_state,omitempty"` // Final status before idle (missedCall, notReached, finished)
 	Caller      LineStatusParticipant `json:"caller"`
@@ -92,6 +92,7 @@ type LineStatusParticipant struct {
 type LineStatusExtension struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
+	Type string `json:"type"`
 }
 
 // CallHistory represents a list of recent calls
@@ -103,17 +104,19 @@ type CallHistory struct {
 
 // MSNCallEvent represents a call event optimized for MSN call history
 type MSNCallEvent struct {
-	ID          string                `json:"id"`
-	Timestamp   time.Time             `json:"timestamp"`
-	Direction   CallDirection         `json:"direction"`
-	Line        int                   `json:"line"`
-	Trunk       string                `json:"trunk,omitempty"`
-	Caller      LineStatusParticipant `json:"caller"`
-	Called      LineStatusParticipant `json:"called"`
-	CallerMSN   string                `json:"caller_msn,omitempty"`
-	CalledMSN   string                `json:"called_msn,omitempty"`
-	Duration    int                   `json:"duration,omitempty"`
-	FinishState string                `json:"finish_state"`
+	ID              string         `json:"id"`
+	Timestamp       time.Time      `json:"timestamp"`
+	Direction       CallDirection  `json:"direction"`
+	Line            int            `json:"line"`
+	Trunk           string         `json:"trunk,omitempty"`
+	Caller          LineStatusParticipant `json:"caller"`
+	Called          LineStatusParticipant `json:"called"`
+	CallerMSN       string         `json:"caller_msn,omitempty"`
+	CalledMSN       string         `json:"called_msn,omitempty"`
+	CallerExtension *ExtensionInfo `json:"caller_extension,omitempty"`
+	CalledExtension *ExtensionInfo `json:"called_extension,omitempty"`
+	Duration        int            `json:"duration,omitempty"`
+	FinishState     string         `json:"finish_state"`
 }
 
 // MSNCallHistory represents call history for a specific MSN
@@ -167,9 +170,11 @@ func (mh *MSNCallHistory) AddCall(event CallEvent) {
 			PhoneNumber: event.Called,
 			Name:        event.CalledName,
 		},
-		CallerMSN: event.CallerMSN,
-		CalledMSN: event.CalledMSN,
-		Duration:  event.Duration,
+		CallerMSN:       event.CallerMSN,
+		CalledMSN:       event.CalledMSN,
+		CallerExtension: event.CallerExtension,
+		CalledExtension: event.CalledExtension,
+		Duration:        event.Duration,
 		// FinishState will be set from event.Status or derived
 	}
 

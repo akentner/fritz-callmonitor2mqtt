@@ -77,7 +77,7 @@ func main() {
 		log.Fatalf("Failed to create database client: %v", err)
 	}
 
-	// Initialize MQTT client with database client
+	// Initialize MQTT client with database client and PBX config
 	mqttClient := mqtt.NewClient(
 		cfg.MQTT.Broker,
 		cfg.MQTT.Port,
@@ -91,6 +91,7 @@ func main() {
 		cfg.MQTT.ConnectTimeout,
 		cfg.App.LogLevel,
 		dbClient,
+		&cfg.PBX,
 		cfg.PBX.MSN,
 		cfg.App.MSNCallHistorySize,
 	)
