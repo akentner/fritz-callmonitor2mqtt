@@ -93,7 +93,7 @@ func TestMSNCallHistoryMaxSize(t *testing.T) {
 	// Create client with small MSN call history size for testing
 	client := NewClient(
 		"localhost", 1883, "", "", "test", "test", 1, false,
-		60*time.Second, 30*time.Second, "info", nil,
+		60*time.Second, 30*time.Second, "info", nil, nil,
 		[]string{"12345"}, 2, // Only keep 2 calls
 	)
 
@@ -128,7 +128,7 @@ func TestMSNCallHistoryEmptyArraySerialization(t *testing.T) {
 	// Create client with empty MSN call history
 	client := NewClient(
 		"localhost", 1883, "", "", "test", "test", 1, false,
-		60*time.Second, 30*time.Second, "info", nil,
+		60*time.Second, 30*time.Second, "info", nil, nil,
 		[]string{"12345"}, 30,
 	)
 

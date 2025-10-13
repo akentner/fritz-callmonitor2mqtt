@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strings"
 	"sync"
 	"time"
 
@@ -676,6 +677,41 @@ func (c *Client) LoadMSNCallHistoriesFromDB() error {
 				finishState = string(*dbCall.FinishState)
 			}
 
+			// Try to resolve extension information from MSN associations
+			var callerExtension, calledExtension *types.ExtensionInfo
+
+			// If caller has MSN, find the extension associated with that MSN
+			if callerMSN != "" && c.pbxConfig != nil {
+				// Look for extension that matches this MSN
+				for _, ext := range c.pbxConfig.Extensions {
+					// Check if extension name contains the MSN (like "T 22 (990134)")
+					if strings.Contains(ext.Name, callerMSN) {
+						callerExtension = &types.ExtensionInfo{
+							Number: ext.Number,
+							Name:   ext.Name,
+							Type:   ext.Type,
+						}
+						break
+					}
+				}
+			}
+
+			// If called has MSN, find the extension associated with that MSN
+			if calledMSN != "" && c.pbxConfig != nil {
+				// Look for extension that matches this MSN
+				for _, ext := range c.pbxConfig.Extensions {
+					// Check if extension name contains the MSN (like "T 22 (3698237)")
+					if strings.Contains(ext.Name, calledMSN) {
+						calledExtension = &types.ExtensionInfo{
+							Number: ext.Number,
+							Name:   ext.Name,
+							Type:   ext.Type,
+						}
+						break
+					}
+				}
+			}
+
 			// Convert database Call to MSNCallEvent
 			msnCallEvent := types.MSNCallEvent{
 				ID:        dbCall.CallID.String(),
@@ -691,10 +727,12 @@ func (c *Client) LoadMSNCallHistoriesFromDB() error {
 					PhoneNumber: called,
 					Name:        calledName,
 				},
-				CallerMSN:   callerMSN,
-				CalledMSN:   calledMSN,
-				Duration:    safeInt(dbCall.Duration),
-				FinishState: finishState,
+				CallerMSN:       callerMSN,
+				CalledMSN:       calledMSN,
+				CallerExtension: callerExtension,
+				CalledExtension: calledExtension,
+				Duration:        safeInt(dbCall.Duration),
+				FinishState:     finishState,
 			}
 
 			msnCallEvents = append(msnCallEvents, msnCallEvent)

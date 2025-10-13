@@ -104,19 +104,19 @@ type CallHistory struct {
 
 // MSNCallEvent represents a call event optimized for MSN call history
 type MSNCallEvent struct {
-	ID              string         `json:"id"`
-	Timestamp       time.Time      `json:"timestamp"`
-	Direction       CallDirection  `json:"direction"`
-	Line            int            `json:"line"`
-	Trunk           string         `json:"trunk,omitempty"`
+	ID              string                `json:"id"`
+	Timestamp       time.Time             `json:"timestamp"`
+	Direction       CallDirection         `json:"direction"`
+	Line            int                   `json:"line"`
+	Trunk           string                `json:"trunk,omitempty"`
 	Caller          LineStatusParticipant `json:"caller"`
 	Called          LineStatusParticipant `json:"called"`
-	CallerMSN       string         `json:"caller_msn,omitempty"`
-	CalledMSN       string         `json:"called_msn,omitempty"`
-	CallerExtension *ExtensionInfo `json:"caller_extension,omitempty"`
-	CalledExtension *ExtensionInfo `json:"called_extension,omitempty"`
-	Duration        int            `json:"duration,omitempty"`
-	FinishState     string         `json:"finish_state"`
+	CallerMSN       string                `json:"caller_msn,omitempty"`
+	CalledMSN       string                `json:"called_msn,omitempty"`
+	CallerExtension *ExtensionInfo        `json:"caller_extension,omitempty"`
+	CalledExtension *ExtensionInfo        `json:"called_extension,omitempty"`
+	Duration        int                   `json:"duration,omitempty"`
+	FinishState     string                `json:"finish_state"`
 }
 
 // MSNCallHistory represents call history for a specific MSN

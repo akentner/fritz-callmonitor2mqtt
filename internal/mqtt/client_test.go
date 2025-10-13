@@ -23,6 +23,7 @@ func createTestClient() *Client {
 		30*time.Second,
 		"info",
 		nil,
+		nil,
 		[]string{"12345", "67890"},
 		30,
 	)
@@ -260,14 +261,14 @@ func TestFSMDebugTopicsOnlyOnDebugLevel(t *testing.T) {
 	clientInfo := NewClient(
 		"localhost", 1883, "", "", "test", "test", 1, true,
 		60*time.Second, 30*time.Second, "info",
-		nil, []string{}, 30,
+		nil, nil, []string{}, 30,
 	)
 
 	// Test with debug log level - FSM topics should be published
 	clientDebug := NewClient(
 		"localhost", 1883, "", "", "test", "test", 1, true,
 		60*time.Second, 30*time.Second, "debug",
-		nil, []string{}, 30,
+		nil, nil, []string{}, 30,
 	)
 
 	// Verify log level is set correctly
