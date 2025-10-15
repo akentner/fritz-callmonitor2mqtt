@@ -33,3 +33,14 @@ bin/
 dist/
 
 data/
+# Test files and development tools
+test_server*.py
+test.env
+config.env
+
+# Build artifacts  
+fritz-callmonitor2mqtt
+fritz-callmonitor2mqtt-*
+
+# Standalone migration files (embedded in Go)
+migrations/005_add_extension_fields.sql
