@@ -78,7 +78,7 @@ const (
     CallStatusNotReached  CallStatus = "notReached"
     CallStatusMissedCall  CallStatus = "missedCall"
     CallStatusFinished    CallStatus = "finished"
-    CallStatusMessageBox  CallStatus = "messageBox"  // Reserved for future use
+    CallStatusVoiceBox    CallStatus = "voiceBox"   // For VOICEBOX/answering machine calls
 )
 ```
 

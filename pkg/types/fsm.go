@@ -285,7 +285,7 @@ func (fsm *CallStateMachine) executeTimeoutTransition() {
 	if oldState == CallStatusVoiceBox {
 		// VoiceBox timeout: transition to finished (which will then timeout to idle)
 		fsm.setState(CallStatusFinished)
-		
+
 		// Set up timeout for finished state
 		fsm.handleTimeouts(CallStatusFinished)
 

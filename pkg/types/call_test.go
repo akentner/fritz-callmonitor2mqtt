@@ -91,7 +91,7 @@ func TestCallStatusConstants(t *testing.T) {
 		{CallStatusNotReached, "notReached"},
 		{CallStatusMissedCall, "missedCall"},
 		{CallStatusFinished, "finished"},
-		{CallStatusMessageBox, "messageBox"},
+		{CallStatusVoiceBox, "voiceBox"},
 	}
 
 	for _, tt := range tests {
