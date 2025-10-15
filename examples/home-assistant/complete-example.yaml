@@ -1,0 +1,230 @@
+# Fritz!Box Callmonitor Phone Number RPC - Complete Example Setup
+# This file demonstrates a complete Home Assistant integration
+
+# Complete configuration.yaml section
+configuration:
+  # Include all Phone Number RPC components
+  sensor: !include sensors.yaml
+  script: !include scripts.yaml  
+  automation: !include phone-rpc-automations.yaml
+  input_text: !include inputs.yaml
+  input_number: !include inputs.yaml
+  input_boolean: !include inputs.yaml
+  input_select: !include inputs.yaml
+
+# Example secrets.yaml entries
+secrets:
+  fritz_mqtt_broker: "192.168.1.100"
+  fritz_mqtt_port: 1883
+  fritz_mqtt_user: "homeassistant"
+  fritz_mqtt_password: "your_mqtt_password"
+  fritz_topic_prefix: "fritz/callmonitor"
+
+# Example automations for different use cases
+example_automations:
+
+  # Use Case 1: Automatic contact management for business
+  - alias: "Fritz: Business Hours Contact Management"
+    trigger:
+      - platform: state
+        entity_id: binary_sensor.fritz_has_unknown_caller
+        to: 'on'
+    condition:
+      - condition: time
+        after: '08:00:00'
+        before: '18:00:00'
+      - condition: state
+        entity_id: binary_sensor.workday_sensor
+        state: 'on'
+    action:
+      - service: notify.business_team
+        data:
+          title: "📞 Unknown Business Caller"
+          message: >
+            Unknown number {{ states('sensor.fritz_last_unknown_caller') }} 
+            called during business hours. Please review and add to contacts if needed.
+
+  # Use Case 2: Family contact management
+  - alias: "Fritz: Family Unknown Caller Alert"  
+    trigger:
+      - platform: state
+        entity_id: sensor.fritz_last_unknown_caller
+        to: 'on'
+    condition:
+      - condition: time
+        after: '07:00:00'
+        before: '22:00:00'
+    action:
+      - service: notify.family
+        data:
+          title: "📞 Unknown Caller"
+          message: >
+            Unknown number {{ states('sensor.fritz_last_unknown_caller') }} just called.
+            Tap to add to contacts.
+          data:
+            actions:
+              - action: "add_contact"
+                title: "Add Contact"
+
+  # Use Case 3: Security monitoring
+  - alias: "Fritz: Security Monitoring Unknown Calls"
+    trigger:
+      - platform: state
+        entity_id: sensor.fritz_last_unknown_caller
+    condition:
+      - condition: time
+        after: '22:00:00'
+        before: '06:00:00'
+    action:
+      - service: script.fritz_get_phone_name
+        data:
+          phone_number: "{{ trigger.to_state.state }}"
+      - service: persistent_notification.create
+        data:
+          title: "🚨 Late Night Unknown Call"
+          message: >
+            Unknown number {{ trigger.to_state.state }} called at {{ now().strftime('%H:%M') }}.
+            Security alert logged.
+          notification_id: "security_unknown_call"
+
+# Example dashboard usage scenarios
+dashboard_examples:
+
+  # Scenario 1: Customer Service Dashboard
+  customer_service_card:
+    type: vertical-stack
+    title: "Customer Service Phone Management"
+    cards:
+      - type: entities
+        entities:
+          - sensor.fritz_phone_database_stats
+          - sensor.fritz_contact_resolution_rate
+          - binary_sensor.fritz_has_unknown_caller
+      - type: button
+        name: "Add Last Caller as Customer"
+        service: script.fritz_add_last_unknown_caller
+        service_data:
+          contact_name: "Customer - {{ now().strftime('%Y%m%d') }}"
+
+  # Scenario 2: Home Security Dashboard  
+  security_card:
+    type: conditional
+    conditions:
+      - entity: binary_sensor.fritz_has_unknown_caller
+        state: 'on'
+    card:
+      type: alarm-panel
+      title: "Unknown Caller Security Alert"
+      entity: alarm_control_panel.house
+      
+  # Scenario 3: Family Contact Manager
+  family_card:
+    type: grid
+    columns: 2
+    cards:
+      - type: button
+        name: "Add Family Contact"
+        service: script.fritz_set_phone_name
+        icon: mdi:account-plus
+      - type: button  
+        name: "Search Family"
+        service: script.fritz_search_phone_numbers
+        service_data:
+          search_pattern: "Familie"
+
+# Advanced RPC usage patterns
+advanced_patterns:
+
+  # Pattern 1: Batch operations with error handling
+  batch_contact_update:
+    sequence:
+      - repeat:
+          count: "{{ contacts | length }}"
+          sequence:
+            - service: script.fritz_set_phone_name
+              data:
+                phone_number: "{{ contacts[repeat.index - 1].phone }}"
+                contact_name: "{{ contacts[repeat.index - 1].name }}"
+            - delay:
+                milliseconds: 200
+            - wait_for_trigger:
+                - platform: mqtt
+                  topic: "fritz/callmonitor/phone_number/response"
+              timeout: '00:00:05'
+            - condition: template
+              value_template: "{{ wait.trigger.payload_json.success }}"
+              continue_on_error: true
+
+  # Pattern 2: Contact validation and cleanup
+  contact_validation:
+    sequence:
+      - service: script.fritz_list_phone_numbers
+        data:
+          limit: 1000
+      - wait_for_trigger:
+          - platform: mqtt
+            topic: "fritz/callmonitor/phone_number/response"
+        timeout: '00:00:10'
+      - variables:
+          contacts: "{{ wait.trigger.payload_json.phone_numbers }}"
+          duplicates: >
+            {% set names = contacts | map(attribute='name') | list %}
+            {% set unique_names = names | unique | list %}
+            {{ names | length - unique_names | length }}
+      - condition: template
+        value_template: "{{ duplicates > 0 }}"
+      - service: persistent_notification.create
+        data:
+          title: "🔍 Contact Duplicates Found"
+          message: "Found {{ duplicates }} potential duplicate contacts. Review needed."
+
+  # Pattern 3: Smart contact categorization
+  contact_categorization:
+    sequence:
+      - service: script.fritz_search_phone_numbers
+        data:
+          search_pattern: "{{ category_pattern }}"
+      - wait_for_trigger:
+          - platform: mqtt
+            topic: "fritz/callmonitor/phone_number/response"
+      - variables:
+          category_contacts: "{{ wait.trigger.payload_json.phone_numbers }}"
+          mobile_count: >
+            {{ category_contacts | selectattr('phone_number', 'match', '.*01[567].*') | list | length }}
+          landline_count: >
+            {{ category_contacts | rejectattr('phone_number', 'match', '.*01[567].*') | list | length }}
+
+# Integration with other Home Assistant systems
+integrations:
+
+  # Integration with Node-RED
+  node_red_flow:
+    description: "Use Node-RED to create complex contact management flows"
+    example_topic: "homeassistant/fritz/contact_sync"
+    
+  # Integration with Telegram Bot
+  telegram_commands:
+    - "/fritz_add_contact +49123456789 Max Mustermann"
+    - "/fritz_search Max"
+    - "/fritz_list 20"
+    
+  # Integration with Voice Assistants
+  voice_commands:
+    - "Hey Google, add phone contact"
+    - "Alexa, search Fritz contacts for Max"
+
+# Performance considerations
+performance_tips:
+  - "Use reasonable limits for list/search operations (default: 50-100)"
+  - "Implement delays between batch operations (200-500ms)"
+  - "Monitor MQTT topic throughput during bulk imports"
+  - "Use persistent notifications instead of frequent popups"
+  - "Cache frequent search results in input_text fields"
+
+# Security considerations  
+security_notes:
+  - "Phone numbers are stored in SQLite database"
+  - "MQTT topics should use authentication"
+  - "Consider encryption for sensitive contact data"
+  - "Implement rate limiting for RPC operations"
+  - "Regular database backups recommended"

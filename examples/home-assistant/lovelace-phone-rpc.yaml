@@ -1,0 +1,194 @@
+# Fritz!Box Callmonitor Phone Number Management Dashboard
+# Add this to your Lovelace dashboard configuration
+
+type: vertical-stack
+cards:
+  # Header Card
+  - type: markdown
+    content: |
+      # 📞 Fritz Phone Number Management
+      Manage your contact database for improved caller identification.
+
+  # Quick Stats
+  - type: horizontal-stack
+    cards:
+      - type: statistic
+        entity: sensor.fritz_phone_database_stats
+        name: "Total Contacts"
+        icon: mdi:phone-log
+      - type: statistic
+        entity: sensor.fritz_contact_resolution_rate
+        name: "Resolution Rate"
+        icon: mdi:percent
+      - type: statistic
+        entity: sensor.fritz_last_unknown_caller
+        name: "Last Unknown"
+        icon: mdi:phone-alert
+
+  # Phone RPC Status
+  - type: entities
+    title: "Phone Number RPC Status"
+    show_header_toggle: false
+    entities:
+      - entity: binary_sensor.fritz_phone_rpc_available
+        name: "RPC Service"
+        icon: mdi:api
+      - entity: sensor.fritz_phone_rpc_response
+        name: "Last Response"
+      - entity: binary_sensor.fritz_has_unknown_caller
+        name: "Has Unknown Caller"
+      - entity: binary_sensor.fritz_low_contact_resolution
+        name: "Low Resolution Rate"
+
+  # Quick Actions
+  - type: entities
+    title: "📞 Quick Contact Actions"
+    show_header_toggle: false
+    entities:
+      # Quick Add Unknown Caller
+      - type: call-service
+        name: "Add Last Unknown Caller"
+        service: script.fritz_add_last_unknown_caller
+        service_data:
+          contact_name: "New Contact"
+        icon: mdi:phone-plus
+      # List All Contacts
+      - type: call-service
+        name: "List All Contacts (50)"
+        service: script.fritz_list_phone_numbers
+        service_data:
+          limit: 50
+        icon: mdi:phone-log
+      # Search Contacts
+      - type: call-service
+        name: "Search: 'Max'"
+        service: script.fritz_search_phone_numbers
+        service_data:
+          search_pattern: "Max"
+          limit: 20
+        icon: mdi:phone-search
+
+  # Manual Contact Management
+  - type: entities
+    title: "📝 Manual Contact Management"
+    show_header_toggle: false
+    entities:
+      # Input fields
+      - entity: input_text.fritz_phone_number
+        name: "Phone Number"
+      - entity: input_text.fritz_contact_name  
+        name: "Contact Name"
+      # Action buttons
+      - type: call-service
+        name: "Set Contact"
+        service: script.fritz_set_phone_name
+        service_data:
+          phone_number: "{{ states('input_text.fritz_phone_number') }}"
+          contact_name: "{{ states('input_text.fritz_contact_name') }}"
+        icon: mdi:phone-plus
+      - type: call-service
+        name: "Get Contact Info" 
+        service: script.fritz_get_phone_name
+        service_data:
+          phone_number: "{{ states('input_text.fritz_phone_number') }}"
+        icon: mdi:phone-search
+      - type: call-service
+        name: "Delete Contact"
+        service: script.fritz_delete_phone_name
+        service_data:
+          phone_number: "{{ states('input_text.fritz_phone_number') }}"
+          confirm_deletion: true
+        icon: mdi:phone-minus
+        confirmation:
+          text: "Are you sure you want to delete this contact?"
+
+  # Recent RPC Response Details
+  - type: conditional
+    conditions:
+      - entity: sensor.fritz_phone_rpc_response
+        state_not: "unknown"
+    card:
+      type: markdown
+      title: "📋 Last RPC Response"
+      content: |
+        **Request ID:** {{ state_attr('sensor.fritz_phone_rpc_response', 'request_id') }}
+        **Status:** {{ '✅ Success' if state_attr('sensor.fritz_phone_rpc_response', 'success') else '❌ Error' }}
+        **Timestamp:** {{ state_attr('sensor.fritz_phone_rpc_response', 'timestamp') | as_timestamp | timestamp_custom('%d.%m.%Y %H:%M:%S') }}
+        
+        {% if state_attr('sensor.fritz_phone_rpc_response', 'error') %}
+        **Error:** {{ state_attr('sensor.fritz_phone_rpc_response', 'error') }}
+        {% endif %}
+        
+        {% if state_attr('sensor.fritz_phone_rpc_response', 'phone_number') %}
+        **Contact Found:**
+        - Number: {{ state_attr('sensor.fritz_phone_rpc_response', 'phone_number').phone_number }}
+        - Name: {{ state_attr('sensor.fritz_phone_rpc_response', 'phone_number').name or 'No name set' }}
+        {% endif %}
+        
+        {% if state_attr('sensor.fritz_phone_rpc_response', 'count') > 0 %}
+        **Results:** {{ state_attr('sensor.fritz_phone_rpc_response', 'count') }} contact(s) found
+        {% endif %}
+
+  # Database Statistics
+  - type: conditional
+    conditions:
+      - entity: sensor.fritz_phone_database_stats
+        state_not: "unknown"
+    card:
+      type: markdown
+      title: "📊 Database Statistics"  
+      content: |
+        **Total Contacts:** {{ states('sensor.fritz_phone_database_stats') }}
+        **Last Updated:** {{ state_attr('sensor.fritz_phone_database_stats', 'last_updated') | as_timestamp | timestamp_custom('%d.%m.%Y %H:%M') }}
+        
+        **Contact Types:**
+        - Mobile: {{ state_attr('sensor.fritz_phone_database_stats', 'contact_types').mobile or 0 }}
+        - Landline: {{ state_attr('sensor.fritz_phone_database_stats', 'contact_types').landline or 0 }}
+        
+        {% if state_attr('sensor.fritz_phone_database_stats', 'recent_contacts') %}
+        **Recent Contacts:**
+        {% for contact in state_attr('sensor.fritz_phone_database_stats', 'recent_contacts')[:3] %}
+        - {{ contact.phone_number }}: {{ contact.name or 'No name' }}
+        {% endfor %}
+        {% endif %}
+
+  # Frequent Unknown Callers
+  - type: conditional
+    conditions:
+      - entity: sensor.fritz_contact_resolution_rate
+        state_not: "unknown"
+    card:
+      type: markdown
+      title: "❓ Unknown Callers Needing Attention"
+      content: |
+        **Resolution Rate:** {{ states('sensor.fritz_contact_resolution_rate') }}%
+        
+        {% set unknowns = state_attr('sensor.fritz_contact_resolution_rate', 'frequent_unknowns') %}
+        {% if unknowns and unknowns | length > 0 %}
+        **Frequent Unknown Numbers:**
+        {% for number in unknowns[:5] %}
+        - {{ number }}
+        {% endfor %}
+        
+        💡 Consider adding these numbers to your contacts for better caller identification.
+        {% else %}
+        ✅ No frequent unknown callers detected.
+        {% endif %}
+
+  # Advanced Actions
+  - type: entities
+    title: "🔧 Advanced Actions"
+    show_header_toggle: false
+    entities:
+      - type: call-service
+        name: "Bulk Import Contacts"
+        service: script.fritz_bulk_import_contacts
+        service_data:
+          contact_data: |
+            +49123456789,Max Mustermann
+            +49987654321,Anna Schmidt
+        icon: mdi:phone-import
+      - type: call-service
+        name: "Weekly Maintenance"
+        service: script.fritz_weekly_contact_maintenance
+        icon: mdi:cog

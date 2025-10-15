@@ -245,6 +245,9 @@ func (app *Application) processEvents() error {
 				event.Line,
 				event.Trunk)
 
+			// Enrich event with extension information
+			app.enrichEventWithExtensions(&event)
+
 			// Process through FSM and publish event to MQTT
 			processedEvent := app.callManager.ProcessEvent(&event)
 			if err := app.mqttClient.PublishCallEvent(*processedEvent); err != nil {
@@ -253,6 +256,30 @@ func (app *Application) processEvents() error {
 
 		case err := <-app.callmonitorClient.Errors():
 			return fmt.Errorf("callmonitor error: %w", err)
+		}
+	}
+}
+
+// enrichEventWithExtensions adds extension information to call events
+func (app *Application) enrichEventWithExtensions(event *types.CallEvent) {
+	// Enrich caller extension if available
+	if event.Extension != "" {
+		// For incoming calls, the extension is the called party (our internal extension)
+		// For outgoing calls, the extension is the calling party (our internal extension)
+		if extInfo := app.config.PBX.GetExtensionInfo(event.Extension); extInfo != nil {
+			if event.Direction == types.CallDirectionInbound {
+				event.CalledExtension = &types.ExtensionInfo{
+					Number: extInfo.Number,
+					Name:   extInfo.Name,
+					Type:   extInfo.Type,
+				}
+			} else if event.Direction == types.CallDirectionOutbound {
+				event.CallerExtension = &types.ExtensionInfo{
+					Number: extInfo.Number,
+					Name:   extInfo.Name,
+					Type:   extInfo.Type,
+				}
+			}
 		}
 	}
 }

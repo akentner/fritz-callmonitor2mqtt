@@ -9,13 +9,20 @@ This directory contains examples for integrating fritz-callmonitor2mqtt with Hom
 - **Call Status Display**: Show current line status and last calls
 - **Automation Examples**: Trigger actions based on call events
 
-## Files
+## Files  
 
+### Core Configuration
 - `configuration.yaml` - Complete Home Assistant configuration example
 - `sensors.yaml` - MQTT sensors for call monitoring  
 - `automations.yaml` - Example automations for call events
-- `scripts.yaml` - Scripts for phone number management
-- `lovelace-card.yaml` - Dashboard card for call monitoring
+
+### Phone Number RPC Integration
+- `scripts.yaml` - Phone Number RPC scripts for contact management
+- `phone-rpc-automations.yaml` - Advanced automations for RPC responses
+- `sensors.yaml` - RPC response sensors and contact statistics
+- `inputs.yaml` - Input fields for manual contact management
+- `lovelace-phone-rpc.yaml` - Dashboard card for phone number management
+- `complete-example.yaml` - Complete setup examples and use cases
 
 ## Setup Instructions
 
@@ -42,11 +49,29 @@ The integration uses these topics (adjust prefix as needed):
 
 After configuration, you'll have these entities:
 
-### Sensors
+### Core Sensors
 - `sensor.fritz_callmonitor_status` - Service availability
 - `sensor.fritz_line_1_status` - Line 1 status
 - `sensor.fritz_line_1_last_call` - Last call on line 1
 - `sensor.fritz_call_history` - Recent call history
+
+### Phone Number RPC Entities
+- `sensor.fritz_phone_rpc_response` - Last RPC response status
+- `sensor.fritz_phone_database_stats` - Contact database statistics
+- `sensor.fritz_last_unknown_caller` - Detection of unknown callers
+- `sensor.fritz_contact_resolution_rate` - Percentage of resolved contacts
+- `binary_sensor.fritz_phone_rpc_available` - RPC service availability
+- `binary_sensor.fritz_has_unknown_caller` - Unknown caller detection
+- `binary_sensor.fritz_low_contact_resolution` - Low resolution rate alert
+
+### Scripts for Contact Management
+- `script.fritz_set_phone_name` - Add/update contact
+- `script.fritz_get_phone_name` - Retrieve contact info
+- `script.fritz_delete_phone_name` - Delete contact
+- `script.fritz_list_phone_numbers` - List all contacts
+- `script.fritz_search_phone_numbers` - Search contacts by name
+- `script.fritz_add_last_unknown_caller` - Quick add unknown caller
+- `script.fritz_bulk_import_contacts` - Bulk import from text
 
 ### Services
 - `script.fritz_set_phone_name` - Set phone number name

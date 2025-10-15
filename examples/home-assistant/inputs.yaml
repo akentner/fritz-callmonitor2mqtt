@@ -1,0 +1,114 @@
+# Fritz!Box Callmonitor Input Fields for Phone Number Management
+# Add these to your input_text section in configuration.yaml
+
+input_text:
+  # Phone number input for manual operations
+  fritz_phone_number:
+    name: "Fritz Phone Number"
+    icon: "mdi:phone"
+    pattern: "^\\+?[1-9]\\d{1,14}$"
+    mode: text
+    max: 20
+    initial: ""
+
+  # Contact name input for manual operations  
+  fritz_contact_name:
+    name: "Fritz Contact Name"
+    icon: "mdi:account"
+    mode: text
+    max: 100
+    initial: ""
+
+  # Quick contact name for unknown caller
+  fritz_quick_contact_name:
+    name: "Quick Contact Name"
+    icon: "mdi:account-plus"
+    mode: text
+    max: 100
+    initial: ""
+
+  # Search pattern for contact search
+  fritz_search_pattern:
+    name: "Search Pattern"
+    icon: "mdi:magnify"
+    mode: text
+    max: 50
+    initial: ""
+
+  # Bulk import data
+  fritz_bulk_import_data:
+    name: "Bulk Import Data"
+    icon: "mdi:import"
+    mode: text
+    max: 10000
+    initial: |
+      +49123456789,Max Mustermann
+      +49987654321,Anna Schmidt
+
+# Input numbers for configuration
+input_number:
+  # Limit for list operations
+  fritz_list_limit:
+    name: "List Limit"
+    icon: "mdi:format-list-numbered"
+    mode: box
+    min: 1
+    max: 1000
+    step: 1
+    initial: 50
+
+  # Search limit  
+  fritz_search_limit:
+    name: "Search Limit"
+    icon: "mdi:magnify"
+    mode: box
+    min: 1
+    max: 100
+    step: 1
+    initial: 20
+
+# Input booleans for confirmations
+input_boolean:
+  # Confirm contact deletion
+  fritz_confirm_deletion:
+    name: "Confirm Contact Deletion"
+    icon: "mdi:delete-alert"
+    initial: false
+
+  # Enable automatic contact suggestions
+  fritz_auto_suggest_contacts:
+    name: "Auto-suggest Unknown Contacts"
+    icon: "mdi:account-question"
+    initial: true
+
+  # Enable VIP auto-detection
+  fritz_auto_detect_vip:
+    name: "Auto-detect VIP Numbers"
+    icon: "mdi:star"
+    initial: false
+
+# Input selects for operation types
+input_select:
+  # RPC operation selector
+  fritz_rpc_operation:
+    name: "RPC Operation"
+    icon: "mdi:cog"
+    options:
+      - "get"
+      - "set" 
+      - "delete"
+      - "list"
+      - "search"
+    initial: "get"
+
+  # Contact type filter
+  fritz_contact_type_filter:
+    name: "Contact Type Filter"
+    icon: "mdi:filter"
+    options:
+      - "all"
+      - "mobile"
+      - "landline"
+      - "service"
+      - "international"
+    initial: "all"

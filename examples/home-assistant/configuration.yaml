@@ -63,10 +63,18 @@ template:
         state_topic: "fritz/callmonitor/line/1/last_event"
         value_template: >
           {% set event = value_json %}
+          {% set caller_info = event.caller_name or event.caller %}
+          {% set called_info = event.called_name or event.called %}
+          {% if event.caller_extension %}
+            {% set caller_info = event.caller_extension.name + " (" + event.caller_extension.number + ")" %}
+          {% endif %}
+          {% if event.called_extension %}
+            {% set called_info = event.called_extension.name + " (" + event.called_extension.number + ")" %}
+          {% endif %}
           {% if event.direction == 'inbound' %}
-            📞 {{ event.caller_name or event.caller }} → {{ event.called_name or event.called }}
+            📞 {{ caller_info }} → {{ called_info }}
           {% else %}
-            📱 {{ event.caller_name or event.caller }} → {{ event.called_name or event.called }}
+            📱 {{ caller_info }} → {{ called_info }}
           {% endif %}
         json_attributes_topic: "fritz/callmonitor/line/1/last_event"
         availability:
@@ -80,12 +88,70 @@ template:
           {
             "calls": {{ value_json.calls | tojson }},
             "last_updated": "{{ value_json.last_updated }}",
-            "total_calls": {{ value_json.calls | length }}
+            "total_calls": {{ value_json.calls | length }},
+            "internal_calls": {{ value_json.calls | selectattr('caller_extension', 'defined') | list | length + value_json.calls | selectattr('called_extension', 'defined') | list | length }},
+            "extension_types": {{ value_json.calls | map(attribute='caller_extension.type') | reject('none') | list + value_json.calls | map(attribute='called_extension.type') | reject('none') | list | unique | list | tojson }}
           }
         unit_of_measurement: "calls"
         icon: "mdi:phone-log"
         availability:
           - topic: "fritz/callmonitor/history"
+
+      # MSN-specific call history sensors
+      - name: "Fritz MSN Call History"
+        state_topic: "fritz/callmonitor/msn/+49123456789/history"  # Replace with your MSN
+        value_template: "{{ value_json.calls | length }}"
+        json_attributes_topic: "fritz/callmonitor/msn/+49123456789/history"
+        json_attributes_template: >
+          {
+            "msn": "{{ value_json.msn }}",
+            "calls": {{ value_json.calls | tojson }},
+            "last_updated": "{{ value_json.updated_at }}",
+            "total_calls": {{ value_json.calls | length }},
+            "extension_calls": {{ value_json.calls | selectattr('caller_extension', 'defined') | list | length + value_json.calls | selectattr('called_extension', 'defined') | list | length }},
+            "recent_extension_activity": {{ value_json.calls[:5] | selectattr('caller_extension', 'defined') | map(attribute='caller_extension.name') | list + value_json.calls[:5] | selectattr('called_extension', 'defined') | map(attribute='called_extension.name') | list | unique | list | tojson }}
+          }
+        unit_of_measurement: "calls"
+        icon: "mdi:phone-log"
+        availability:
+          - topic: "fritz/callmonitor/msn/+49123456789/history"
+
+      # Extension activity sensor
+      - name: "Fritz Extension Activity"
+        state_topic: "fritz/callmonitor/line/1/status"
+        value_template: >
+          {% if value_json.extension %}
+            {{ value_json.extension.name }} ({{ value_json.status }})
+          {% else %}
+            No Extension
+          {% endif %}
+        json_attributes_topic: "fritz/callmonitor/line/1/status"
+        json_attributes_template: >
+          {
+            "extension_name": "{{ value_json.extension.name if value_json.extension else null }}",
+            "extension_number": "{{ value_json.extension.id if value_json.extension else null }}",
+            "extension_type": "{{ value_json.extension.type if value_json.extension else null }}",
+            "line_status": "{{ value_json.status }}",
+            "call_direction": "{{ value_json.direction if value_json.status != 'idle' else null }}"
+          }
+        icon: >
+          {% if value_json.extension %}
+            {% if value_json.extension.type == 'DECT' %}
+              mdi:phone-wireless
+            {% elif value_json.extension.type == 'VOIP' %}
+              mdi:voip
+            {% elif value_json.extension.type == 'ANALOG' %}
+              mdi:phone-classic
+            {% elif value_json.extension.type == 'VOICEBOX' %}
+              mdi:voicemail
+            {% else %}
+              mdi:phone
+            {% endif %}
+          {% else %}
+            mdi:phone-off
+          {% endif %}
+        availability:
+          - topic: "fritz/callmonitor/line/1/status"
 
 # Binary sensors for call states
 binary_sensor:
@@ -97,7 +163,21 @@ binary_sensor:
     payload_on: "true"
     payload_off: "false"
     device_class: occupancy
-    icon: "mdi:phone-in-talk"
+    icon: >
+      {% if value_json.extension %}
+        {% if value_json.extension.type == 'DECT' %}
+          mdi:phone-wireless
+        {% elif value_json.extension.type == 'VOIP' %}
+          mdi:voip
+        {% elif value_json.extension.type == 'ANALOG' %}
+          mdi:phone-classic
+        {% else %}
+          mdi:phone-in-talk
+        {% endif %}
+      {% else %}
+        mdi:phone-in-talk
+      {% endif %}
+    json_attributes_topic: "fritz/callmonitor/line/1/status"
 
   - platform: mqtt
     name: "Fritz Line 1 Incoming Call"
