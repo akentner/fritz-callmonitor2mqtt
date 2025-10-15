@@ -3,6 +3,7 @@ package database
 import (
 	"database/sql"
 	"embed"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -140,21 +141,23 @@ func (c *Client) RunEmbeddedMigrations() error {
 
 // Call represents a persisted call record
 type Call struct {
-	CallID           uuid.UUID         `db:"call_id"`
-	Line             int               `db:"line"`
-	Status           types.CallStatus  `db:"status"`
-	FinishState      *types.CallStatus `db:"finish_state"`
-	Caller           *string           `db:"caller"`
-	Called           *string           `db:"called"`
-	CallerMSN        *string           `db:"caller_msn"`
-	CalledMSN        *string           `db:"called_msn"`
-	Trunk            *string           `db:"trunk"`
-	StartTimestamp   *time.Time        `db:"start_timestamp"`
-	ConnectTimestamp *time.Time        `db:"connect_timestamp"`
-	EndTimestamp     *time.Time        `db:"end_timestamp"`
-	Duration         *int              `db:"duration"`
-	CreatedAt        time.Time         `db:"created_at"`
-	UpdatedAt        time.Time         `db:"updated_at"`
+	CallID           uuid.UUID            `db:"call_id"`
+	Line             int                  `db:"line"`
+	Status           types.CallStatus     `db:"status"`
+	FinishState      *types.CallStatus    `db:"finish_state"`
+	Caller           *string              `db:"caller"`
+	Called           *string              `db:"called"`
+	CallerMSN        *string              `db:"caller_msn"`
+	CalledMSN        *string              `db:"called_msn"`
+	CallerExtension  *types.ExtensionInfo `db:"caller_extension_json"`
+	CalledExtension  *types.ExtensionInfo `db:"called_extension_json"`
+	Trunk            *string              `db:"trunk"`
+	StartTimestamp   *time.Time           `db:"start_timestamp"`
+	ConnectTimestamp *time.Time           `db:"connect_timestamp"`
+	EndTimestamp     *time.Time           `db:"end_timestamp"`
+	Duration         *int                 `db:"duration"`
+	CreatedAt        time.Time            `db:"created_at"`
+	UpdatedAt        time.Time            `db:"updated_at"`
 }
 
 // InsertCall inserts a new call record when transitioning from idle to ringing/calling
@@ -167,6 +170,7 @@ func (c *Client) InsertCall(callID uuid.UUID, line int, status types.CallStatus,
 	callIDString := callID.String()
 
 	var caller, called, callerMSN, calledMSN, trunk *string
+	var callerExtensionJSON, calledExtensionJSON *string
 	var startTimestamp *time.Time
 
 	if event != nil {
@@ -188,15 +192,30 @@ func (c *Client) InsertCall(callID uuid.UUID, line int, status types.CallStatus,
 		if !event.Timestamp.IsZero() {
 			startTimestamp = &event.Timestamp
 		}
+
+		// Serialize extension information to JSON
+		if event.CallerExtension != nil {
+			if jsonData, err := json.Marshal(event.CallerExtension); err == nil {
+				jsonStr := string(jsonData)
+				callerExtensionJSON = &jsonStr
+			}
+		}
+		if event.CalledExtension != nil {
+			if jsonData, err := json.Marshal(event.CalledExtension); err == nil {
+				jsonStr := string(jsonData)
+				calledExtensionJSON = &jsonStr
+			}
+		}
 	}
 
 	query := `INSERT INTO calls (
-		call_id, line, status, caller, called, caller_msn, called_msn, trunk, 
+		call_id, line, status, caller, called, caller_msn, called_msn, 
+		caller_extension_json, called_extension_json, trunk, 
 		start_timestamp, created_at, updated_at
-	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
+	) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
 
 	_, err := c.db.Exec(query, callIDString, line, string(status), caller, called,
-		callerMSN, calledMSN, trunk, startTimestamp)
+		callerMSN, calledMSN, callerExtensionJSON, calledExtensionJSON, trunk, startTimestamp)
 	if err != nil {
 		return fmt.Errorf("failed to insert call: %w", err)
 	}
@@ -229,6 +248,33 @@ func (c *Client) UpdateCall(callID uuid.UUID, status types.CallStatus, finishSta
 
 	// Handle status-specific updates
 	if event != nil {
+		// Handle extension updates when available (typically on CONNECT events)
+		var callerExtensionJSON *string
+		var calledExtensionJSON *string
+
+		if event.CallerExtension != nil {
+			if jsonData, err := json.Marshal(event.CallerExtension); err == nil {
+				jsonStr := string(jsonData)
+				callerExtensionJSON = &jsonStr
+			}
+		}
+		if event.CalledExtension != nil {
+			if jsonData, err := json.Marshal(event.CalledExtension); err == nil {
+				jsonStr := string(jsonData)
+				calledExtensionJSON = &jsonStr
+			}
+		}
+
+		// Update extensions if they exist
+		if callerExtensionJSON != nil {
+			setClauses = append(setClauses, "caller_extension_json = ?")
+			args = append(args, *callerExtensionJSON)
+		}
+		if calledExtensionJSON != nil {
+			setClauses = append(setClauses, "called_extension_json = ?")
+			args = append(args, *calledExtensionJSON)
+		}
+
 		switch status {
 		case types.CallStatusTalking:
 			// Set connect timestamp
@@ -284,7 +330,7 @@ func (c *Client) GetCall(callID uuid.UUID) (*Call, error) {
 	callIDString := callID.String()
 
 	query := `SELECT call_id, line, status, finish_state, caller, called, caller_msn, 
-		called_msn, trunk, start_timestamp, connect_timestamp, end_timestamp, 
+		called_msn, caller_extension_json, called_extension_json, trunk, start_timestamp, connect_timestamp, end_timestamp, 
 		duration, created_at, updated_at FROM calls WHERE call_id = ?`
 
 	row := c.db.QueryRow(query, callIDString)
@@ -292,9 +338,11 @@ func (c *Client) GetCall(callID uuid.UUID) (*Call, error) {
 	var call Call
 	var callIDStr string
 	var finishStateStr *string
+	var callerExtensionJSON, calledExtensionJSON *string
 
 	err := row.Scan(&callIDStr, &call.Line, (*string)(&call.Status), &finishStateStr,
-		&call.Caller, &call.Called, &call.CallerMSN, &call.CalledMSN, &call.Trunk,
+		&call.Caller, &call.Called, &call.CallerMSN, &call.CalledMSN,
+		&callerExtensionJSON, &calledExtensionJSON, &call.Trunk,
 		&call.StartTimestamp, &call.ConnectTimestamp, &call.EndTimestamp,
 		&call.Duration, &call.CreatedAt, &call.UpdatedAt)
 
@@ -318,6 +366,20 @@ func (c *Client) GetCall(callID uuid.UUID) (*Call, error) {
 		call.FinishState = &finishState
 	}
 
+	// Deserialize extension JSON data
+	if callerExtensionJSON != nil && *callerExtensionJSON != "" {
+		var callerExt types.ExtensionInfo
+		if err := json.Unmarshal([]byte(*callerExtensionJSON), &callerExt); err == nil {
+			call.CallerExtension = &callerExt
+		}
+	}
+	if calledExtensionJSON != nil && *calledExtensionJSON != "" {
+		var calledExt types.ExtensionInfo
+		if err := json.Unmarshal([]byte(*calledExtensionJSON), &calledExt); err == nil {
+			call.CalledExtension = &calledExt
+		}
+	}
+
 	return &call, nil
 }
 
@@ -328,7 +390,7 @@ func (c *Client) GetCallsByLine(line int, limit int) ([]Call, error) {
 	}
 
 	query := `SELECT call_id, line, status, finish_state, caller, called, caller_msn, 
-		called_msn, trunk, start_timestamp, connect_timestamp, end_timestamp, 
+		called_msn, caller_extension_json, called_extension_json, trunk, start_timestamp, connect_timestamp, end_timestamp, 
 		duration, created_at, updated_at FROM calls 
 		WHERE line = ? ORDER BY start_timestamp DESC LIMIT ?`
 
@@ -343,9 +405,11 @@ func (c *Client) GetCallsByLine(line int, limit int) ([]Call, error) {
 		var call Call
 		var callIDStr string
 		var finishStateStr *string
+		var callerExtensionJSON, calledExtensionJSON *string
 
 		err := rows.Scan(&callIDStr, &call.Line, (*string)(&call.Status), &finishStateStr,
-			&call.Caller, &call.Called, &call.CallerMSN, &call.CalledMSN, &call.Trunk,
+			&call.Caller, &call.Called, &call.CallerMSN, &call.CalledMSN,
+			&callerExtensionJSON, &calledExtensionJSON, &call.Trunk,
 			&call.StartTimestamp, &call.ConnectTimestamp, &call.EndTimestamp,
 			&call.Duration, &call.CreatedAt, &call.UpdatedAt)
 
@@ -364,6 +428,20 @@ func (c *Client) GetCallsByLine(line int, limit int) ([]Call, error) {
 		if finishStateStr != nil {
 			finishState := types.CallStatus(*finishStateStr)
 			call.FinishState = &finishState
+		}
+
+		// Deserialize extension JSON data
+		if callerExtensionJSON != nil && *callerExtensionJSON != "" {
+			var callerExt types.ExtensionInfo
+			if err := json.Unmarshal([]byte(*callerExtensionJSON), &callerExt); err == nil {
+				call.CallerExtension = &callerExt
+			}
+		}
+		if calledExtensionJSON != nil && *calledExtensionJSON != "" {
+			var calledExt types.ExtensionInfo
+			if err := json.Unmarshal([]byte(*calledExtensionJSON), &calledExt); err == nil {
+				call.CalledExtension = &calledExt
+			}
 		}
 
 		calls = append(calls, call)
@@ -385,7 +463,7 @@ func (c *Client) GetCallsByMSN(msn string, limit int) ([]Call, error) {
 	// Only get completed calls that involve this MSN
 	// Completed calls have end_timestamp AND finish_state (finished, missedCall, notReached)
 	query := `SELECT call_id, line, status, finish_state, caller, called, caller_msn, 
-		called_msn, trunk, start_timestamp, connect_timestamp, end_timestamp, 
+		called_msn, caller_extension_json, called_extension_json, trunk, start_timestamp, connect_timestamp, end_timestamp, 
 		duration, created_at, updated_at FROM calls 
 		WHERE (caller_msn = ? OR called_msn = ?) AND end_timestamp IS NOT NULL AND finish_state IS NOT NULL
 		ORDER BY end_timestamp DESC LIMIT ?`
@@ -401,9 +479,11 @@ func (c *Client) GetCallsByMSN(msn string, limit int) ([]Call, error) {
 		var call Call
 		var callIDStr string
 		var finishStateStr *string
+		var callerExtensionJSON, calledExtensionJSON *string
 
 		err := rows.Scan(&callIDStr, &call.Line, (*string)(&call.Status), &finishStateStr,
-			&call.Caller, &call.Called, &call.CallerMSN, &call.CalledMSN, &call.Trunk,
+			&call.Caller, &call.Called, &call.CallerMSN, &call.CalledMSN,
+			&callerExtensionJSON, &calledExtensionJSON, &call.Trunk,
 			&call.StartTimestamp, &call.ConnectTimestamp, &call.EndTimestamp,
 			&call.Duration, &call.CreatedAt, &call.UpdatedAt)
 		if err != nil {
@@ -421,6 +501,20 @@ func (c *Client) GetCallsByMSN(msn string, limit int) ([]Call, error) {
 		if finishStateStr != nil {
 			finishState := types.CallStatus(*finishStateStr)
 			call.FinishState = &finishState
+		}
+
+		// Deserialize extension JSON data
+		if callerExtensionJSON != nil && *callerExtensionJSON != "" {
+			var callerExt types.ExtensionInfo
+			if err := json.Unmarshal([]byte(*callerExtensionJSON), &callerExt); err == nil {
+				call.CallerExtension = &callerExt
+			}
+		}
+		if calledExtensionJSON != nil && *calledExtensionJSON != "" {
+			var calledExt types.ExtensionInfo
+			if err := json.Unmarshal([]byte(*calledExtensionJSON), &calledExt); err == nil {
+				call.CalledExtension = &calledExt
+			}
 		}
 
 		calls = append(calls, call)

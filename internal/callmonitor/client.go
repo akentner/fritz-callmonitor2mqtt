@@ -384,6 +384,31 @@ func (c *Client) parseEventDisconnect(parts []string, timestamp time.Time, line 
 		event.Duration = duration
 	}
 
+	// Check for extension number in 5th part and look up if it's a VOICEBOX
+	if len(parts) >= 5 && parts[4] != "" {
+		// First check if it's the literal "VOICEBOX" string
+		if parts[4] == "VOICEBOX" {
+			// Try to find a configured VOICEBOX extension
+			if voiceboxExt := c.findFirstVoiceboxExtension(); voiceboxExt != nil {
+				event.CalledExtension = voiceboxExt
+			} else {
+				// Fallback if no VOICEBOX extension is configured
+				event.CalledExtension = &types.ExtensionInfo{
+					Number: "VOICEBOX",
+					Name:   "Voicebox",
+					Type:   "VOICEBOX",
+				}
+			}
+		} else {
+			// Check if the extension number corresponds to a configured VOICEBOX extension
+			if c.extensionLookup != nil {
+				if ext := c.extensionLookup.GetExtensionInfo(parts[4]); ext != nil && ext.Type == "VOICEBOX" {
+					event.CalledExtension = ext
+				}
+			}
+		}
+	}
+
 	// Look up and clean up the stored line ID mapping
 	if trunk, exists := c.lineIdToTrunk[event.Line]; exists {
 		event.Trunk = trunk
@@ -543,6 +568,22 @@ func (c *Client) resolveExtensionInfo(extension string) *types.ExtensionInfo {
 		return ext
 	}
 
+	return nil
+}
+
+// findFirstVoiceboxExtension finds the first configured VOICEBOX extension
+func (c *Client) findFirstVoiceboxExtension() *types.ExtensionInfo {
+	if c.extensionLookup == nil {
+		return nil
+	}
+
+	// Check the common VOICEBOX range (40-49) which maps to internal **600-**609
+	for i := 40; i <= 49; i++ {
+		extNum := fmt.Sprintf("%d", i)
+		if ext := c.extensionLookup.GetExtensionInfo(extNum); ext != nil && ext.Type == "VOICEBOX" {
+			return ext
+		}
+	}
 	return nil
 }
 
