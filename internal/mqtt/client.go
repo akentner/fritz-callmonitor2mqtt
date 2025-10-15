@@ -226,6 +226,8 @@ func (c *Client) PublishCallEvent(event types.CallEvent) error {
 		return fmt.Errorf("MQTT client not connected")
 	}
 
+	// Extension enrichment and MessageBox detection now happen in main.go before FSM processing
+
 	// Update call history
 	c.callHistory.AddCall(event)
 
@@ -236,13 +238,29 @@ func (c *Client) PublishCallEvent(event types.CallEvent) error {
 	lineKey := fmt.Sprintf("%s_%d", event.Trunk, event.Line)
 	lineStatus := c.getOrCreateLineStatus(lineKey, event)
 
-	// Update extension information if available in event
-	if event.Extension != "" {
+	// Update extension information from enriched event data
+	// For inbound calls, use called extension (our internal extension)
+	// For outbound calls, use caller extension (our internal extension)
+	if event.Direction == types.CallDirectionInbound && event.CalledExtension != nil {
+		lineStatus.Extension = &types.LineStatusExtension{
+			ID:   event.CalledExtension.Number,
+			Name: event.CalledExtension.Name,
+			Type: event.CalledExtension.Type,
+		}
+	} else if event.Direction == types.CallDirectionOutbound && event.CallerExtension != nil {
+		lineStatus.Extension = &types.LineStatusExtension{
+			ID:   event.CallerExtension.Number,
+			Name: event.CallerExtension.Name,
+			Type: event.CallerExtension.Type,
+		}
+	} else if event.Extension != "" {
+		// Fallback to simple extension ID if no enriched data available
 		lineStatus.Extension = c.getOrCreateLineStatusExtension(event.Extension, "")
-	} else {
-		// Set extension to nil if no extension info available
+	} else if event.Type == types.CallTypeRing || event.Type == types.CallTypeCall {
+		// Only clear extension for new calls (ring/call), not for connect/disconnect
 		lineStatus.Extension = nil
 	}
+	// For connect/disconnect events without extension info, keep existing extension
 
 	// Use FSM status if available, otherwise fall back to call type mapping
 	if event.Status != "" {
@@ -307,7 +325,7 @@ func getIconForStatus(status types.CallStatus) string {
 		"missedCall": "mdi:phone-remove",
 		"talking":    "mdi:phone",
 		"finished":   "mdi:phone-hangup",
-		"messageBox": "mdi:phone-message",
+		"voiceBox":   "mdi:phone-message",
 	}
 
 	if icon, exists := iconMapping[status]; exists {
@@ -677,12 +695,14 @@ func (c *Client) LoadMSNCallHistoriesFromDB() error {
 				finishState = string(*dbCall.FinishState)
 			}
 
-			// Try to resolve extension information from MSN associations
+			// Use extension information from database if available, otherwise try MSN associations
 			var callerExtension, calledExtension *types.ExtensionInfo
 
-			// If caller has MSN, find the extension associated with that MSN
-			if callerMSN != "" && c.pbxConfig != nil {
-				// Look for extension that matches this MSN
+			// First priority: Use extension info stored in database
+			if dbCall.CallerExtension != nil {
+				callerExtension = dbCall.CallerExtension
+			} else if callerMSN != "" && c.pbxConfig != nil {
+				// Fallback: If caller has MSN, find the extension associated with that MSN
 				for _, ext := range c.pbxConfig.Extensions {
 					// Check if extension name contains the MSN (like "T 22 (990134)")
 					if strings.Contains(ext.Name, callerMSN) {
@@ -696,9 +716,11 @@ func (c *Client) LoadMSNCallHistoriesFromDB() error {
 				}
 			}
 
-			// If called has MSN, find the extension associated with that MSN
-			if calledMSN != "" && c.pbxConfig != nil {
-				// Look for extension that matches this MSN
+			// First priority: Use extension info stored in database
+			if dbCall.CalledExtension != nil {
+				calledExtension = dbCall.CalledExtension
+			} else if calledMSN != "" && c.pbxConfig != nil {
+				// Fallback: If called has MSN, find the extension associated with that MSN
 				for _, ext := range c.pbxConfig.Extensions {
 					// Check if extension name contains the MSN (like "T 22 (3698237)")
 					if strings.Contains(ext.Name, calledMSN) {
@@ -1066,13 +1088,16 @@ func (c *Client) bootstrapLineStatuses() error {
 
 		// Determine current status (finished calls should show as idle)
 		currentStatus := types.CallStatusIdle
+		var callID string
 		if lastCall.FinishState == nil {
-			// Call is still ongoing, use the stored status
+			// Call is still ongoing, use the stored status and call ID
 			currentStatus = lastCall.Status
+			callID = lastCall.CallID.String()
 		}
+		// If call is finished, don't set call ID - let FSM start fresh
 
 		lineStatus := &types.LineStatus{
-			ID:   lastCall.CallID.String(),
+			ID:   callID, // Empty for finished calls, allows new events to start fresh session
 			Line: line,
 			Trunk: func() string {
 				if lastCall.Trunk != nil {
@@ -1326,8 +1351,5 @@ func (c *Client) removeHomeAssistantDiscovery() error {
 		}
 	}
 
-	if c.logLevel == "debug" {
-		log.Println("Home Assistant MQTT Discovery cleanup completed")
-	}
 	return nil
 }

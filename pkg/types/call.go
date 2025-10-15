@@ -26,7 +26,7 @@ const (
 	CallStatusNotReached CallStatus = "notReached"
 	CallStatusMissedCall CallStatus = "missedCall"
 	CallStatusFinished   CallStatus = "finished"
-	CallStatusMessageBox CallStatus = "messageBox"
+	CallStatusVoiceBox   CallStatus = "voiceBox"
 )
 
 // CallDirection represents the direction of a call

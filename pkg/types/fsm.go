@@ -2,6 +2,7 @@ package types
 
 import (
 	"context"
+	"log"
 	"sync"
 	"time"
 
@@ -84,7 +85,7 @@ func (fsm *CallStateMachine) processEventInternal(eventType CallType, event *Cal
 	defer fsm.mu.Unlock()
 
 	oldState := fsm.currentState
-	newState := fsm.getNextState(fsm.currentState, eventType)
+	newState := fsm.getNextState(fsm.currentState, eventType, event)
 
 	// Store event context
 	if !isTimeout {
@@ -127,7 +128,7 @@ func (fsm *CallStateMachine) processEventInternal(eventType CallType, event *Cal
 }
 
 // getNextState determines the next state based on current state and event type
-func (fsm *CallStateMachine) getNextState(currentState CallStatus, eventType CallType) CallStatus {
+func (fsm *CallStateMachine) getNextState(currentState CallStatus, eventType CallType, event *CallEvent) CallStatus {
 	switch currentState {
 	case CallStatusIdle:
 		switch eventType {
@@ -140,6 +141,10 @@ func (fsm *CallStateMachine) getNextState(currentState CallStatus, eventType Cal
 	case CallStatusRinging:
 		switch eventType {
 		case CallTypeConnect:
+			// Check if this connect event goes to a VoiceBox (VOICEBOX)
+			if event != nil && event.CalledExtension != nil && event.CalledExtension.Type == "VOICEBOX" {
+				return CallStatusVoiceBox
+			}
 			return CallStatusTalking
 		case CallTypeDisconnect:
 			return CallStatusMissedCall
@@ -148,12 +153,26 @@ func (fsm *CallStateMachine) getNextState(currentState CallStatus, eventType Cal
 	case CallStatusCalling:
 		switch eventType {
 		case CallTypeConnect:
+			// Check if this connect event goes to a VoiceBox (VOICEBOX)
+			if event != nil && event.CalledExtension != nil && event.CalledExtension.Type == "VOICEBOX" {
+				return CallStatusVoiceBox
+			}
 			return CallStatusTalking
 		case CallTypeDisconnect:
 			return CallStatusNotReached
 		}
 
 	case CallStatusTalking:
+		switch eventType {
+		case CallTypeDisconnect:
+			// Check if this disconnect event goes to VOICEBOX (VoiceBox)
+			if event != nil && event.CalledExtension != nil && event.CalledExtension.Type == "VOICEBOX" {
+				return CallStatusVoiceBox
+			}
+			return CallStatusFinished
+		}
+
+	case CallStatusVoiceBox:
 		switch eventType {
 		case CallTypeDisconnect:
 			return CallStatusFinished
@@ -175,21 +194,31 @@ func (fsm *CallStateMachine) setState(newState CallStatus) {
 	if fsm.dbPersister != nil {
 		// Generate new call ID for transitions from idle to ringing/calling
 		if oldState == CallStatusIdle && (newState == CallStatusRinging || newState == CallStatusCalling) {
-			newCallID := uuid.New()
-			fsm.callID = &newCallID
+			// Use the event's ID if available, otherwise generate new one
+			if fsm.lastEvent != nil && fsm.lastEvent.ID != "" {
+				if eventID, err := uuid.Parse(fsm.lastEvent.ID); err == nil {
+					fsm.callID = &eventID
+					log.Printf("[DEBUG] FSM: Using event ID as call ID: %s", fsm.lastEvent.ID)
+				} else {
+					newCallID := uuid.New()
+					fsm.callID = &newCallID
+					log.Printf("[DEBUG] FSM: Failed to parse event ID '%s' (error: %v), generated new call ID: %s", fsm.lastEvent.ID, err, newCallID.String())
+				}
+			} else {
+				newCallID := uuid.New()
+				fsm.callID = &newCallID
+				log.Printf("[DEBUG] FSM: No event ID available, generated new call ID: %s", newCallID.String())
+			}
 
 			// Insert new call record
 			if err := fsm.dbPersister.InsertCall(*fsm.callID, fsm.line, newState, fsm.lastEvent); err != nil {
 				// Log error but don't block FSM operation
-				// TODO: Add proper logging interface
-				_ = err // Explicitly ignore error for now
+				log.Printf("ERROR: Failed to insert call %s into database: %v", fsm.callID.String(), err)
 			}
 		} else if fsm.callID != nil && oldState != CallStatusIdle {
 			// Update existing call record for all other transitions
 			if err := fsm.dbPersister.UpdateCall(*fsm.callID, newState, fsm.finishState, fsm.lastEvent); err != nil {
-				// Log error but don't block FSM operation
-				// TODO: Add proper logging interface
-				_ = err // Explicitly ignore error for now
+				log.Printf("ERROR: Failed to update call %s in database: %v", fsm.callID.String(), err)
 			}
 		}
 
@@ -200,8 +229,20 @@ func (fsm *CallStateMachine) setState(newState CallStatus) {
 	}
 
 	// Track finish states (final meaningful states before idle)
-	if newState == CallStatusMissedCall || newState == CallStatusNotReached || newState == CallStatusFinished {
+	if newState == CallStatusMissedCall || newState == CallStatusNotReached {
 		fsm.finishState = &newState
+	} else if newState == CallStatusVoiceBox {
+		// VoiceBox is always a finish state
+		voiceBoxState := CallStatusVoiceBox
+		fsm.finishState = &voiceBoxState
+	} else if newState == CallStatusFinished {
+		// Check if this is a VOICEBOX call (VoiceBox -> Finished transition)
+		if oldState == CallStatusVoiceBox {
+			voiceBoxState := CallStatusVoiceBox // Use the constant for VOICEBOX calls
+			fsm.finishState = &voiceBoxState
+		} else {
+			fsm.finishState = &newState
+		}
 	} else if newState == CallStatusIdle {
 		// When returning to idle, keep the finish state for history
 		// It will be reset on the next non-idle transition
@@ -216,7 +257,7 @@ func (fsm *CallStateMachine) setState(newState CallStatus) {
 // handleTimeouts sets up timeout transitions for states that need them
 func (fsm *CallStateMachine) handleTimeouts(state CallStatus) {
 	switch state {
-	case CallStatusNotReached, CallStatusMissedCall, CallStatusFinished:
+	case CallStatusNotReached, CallStatusMissedCall, CallStatusFinished, CallStatusVoiceBox:
 		fsm.startTimeout(1 * time.Second)
 	}
 }
@@ -241,9 +282,36 @@ func (fsm *CallStateMachine) startTimeout(duration time.Duration) {
 func (fsm *CallStateMachine) executeTimeoutTransition() {
 	fsm.mu.Lock()
 	oldState := fsm.currentState
-	if oldState == CallStatusNotReached || oldState == CallStatusMissedCall || oldState == CallStatusFinished {
-		// Set finishState before transitioning to idle
-		fsm.finishState = &oldState
+	if oldState == CallStatusVoiceBox {
+		// VoiceBox timeout: transition to finished (which will then timeout to idle)
+		fsm.setState(CallStatusFinished)
+		
+		// Set up timeout for finished state
+		fsm.handleTimeouts(CallStatusFinished)
+
+		// Publish MQTT timeout transition (nil event indicates timeout)
+		if fsm.mqttPublisher != nil {
+			go func(line int, old CallStatus) {
+				if err := fsm.mqttPublisher.PublishLineStatusChange(line, old, CallStatusFinished, nil); err != nil {
+					// Ignore error for timeout transitions
+					_ = err // Explicitly ignore error for timeout
+				}
+			}(fsm.line, oldState)
+		}
+
+		if fsm.onStateChange != nil {
+			// Call state change callback outside of lock to avoid deadlock
+			go fsm.onStateChange(oldState, CallStatusFinished)
+		}
+	} else if oldState == CallStatusNotReached || oldState == CallStatusMissedCall || oldState == CallStatusFinished {
+		// Set finishState before transitioning to idle, but preserve voiceBox finishState
+		if oldState == CallStatusFinished && fsm.finishState != nil && *fsm.finishState == CallStatusVoiceBox {
+			// Keep the existing voiceBox finishState when transitioning from finished to idle
+			// This happens after the VoiceBox -> Finished -> Idle timeout sequence
+		} else {
+			// For other cases, set finishState to the current state
+			fsm.finishState = &oldState
+		}
 		// Use setState to properly handle the idle transition
 		fsm.setState(CallStatusIdle)
 
@@ -311,7 +379,7 @@ func (fsm *CallStateMachine) IsValidTransition(eventType CallType) bool {
 	fsm.mu.RLock()
 	defer fsm.mu.RUnlock()
 
-	newState := fsm.getNextState(fsm.currentState, eventType)
+	newState := fsm.getNextState(fsm.currentState, eventType, nil)
 	return newState != fsm.currentState
 }
 
@@ -324,7 +392,7 @@ func (fsm *CallStateMachine) GetValidTransitions() []CallType {
 	allEvents := []CallType{CallTypeRing, CallTypeCall, CallTypeConnect, CallTypeDisconnect}
 
 	for _, event := range allEvents {
-		if fsm.getNextState(fsm.currentState, event) != fsm.currentState {
+		if fsm.getNextState(fsm.currentState, event, nil) != fsm.currentState {
 			validEvents = append(validEvents, event)
 		}
 	}
@@ -367,7 +435,7 @@ func (fsm *CallStateMachine) getValidTransitionsUnsafe() []CallType {
 	allEvents := []CallType{CallTypeRing, CallTypeCall, CallTypeConnect, CallTypeDisconnect}
 
 	for _, event := range allEvents {
-		if fsm.getNextState(fsm.currentState, event) != fsm.currentState {
+		if fsm.getNextState(fsm.currentState, event, nil) != fsm.currentState {
 			validEvents = append(validEvents, event)
 		}
 	}

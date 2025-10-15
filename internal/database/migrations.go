@@ -156,5 +156,142 @@ CREATE INDEX IF NOT EXISTS idx_calls_called ON calls(called);`,
 DROP INDEX IF EXISTS idx_calls_called;
 DROP INDEX IF EXISTS idx_calls_caller;`,
 		},
+		{
+			Version:     6,
+			Name:        "add_extension_fields",
+			Description: "Add extension fields to calls table to store caller and called extension information",
+			UpSQL: `-- Add caller_extension and called_extension columns to calls table as JSON
+-- JSON format: {"number": "610", "name": "Büro", "type": "DECT"}
+ALTER TABLE calls ADD COLUMN caller_extension_json TEXT;
+ALTER TABLE calls ADD COLUMN called_extension_json TEXT;
+
+-- Index for faster queries by caller extension (extract number from JSON)
+CREATE INDEX IF NOT EXISTS idx_calls_caller_ext_number ON calls(json_extract(caller_extension_json, '$.number'));
+
+-- Index for faster queries by called extension (extract number from JSON)
+CREATE INDEX IF NOT EXISTS idx_calls_called_ext_number ON calls(json_extract(called_extension_json, '$.number'));
+
+-- Index for faster queries by extension type
+CREATE INDEX IF NOT EXISTS idx_calls_caller_ext_type ON calls(json_extract(caller_extension_json, '$.type'));
+CREATE INDEX IF NOT EXISTS idx_calls_called_ext_type ON calls(json_extract(called_extension_json, '$.type'));`,
+			DownSQL: `-- Remove indexes
+DROP INDEX IF EXISTS idx_calls_called_ext_type;
+DROP INDEX IF EXISTS idx_calls_caller_ext_type;
+DROP INDEX IF EXISTS idx_calls_called_ext_number;
+DROP INDEX IF EXISTS idx_calls_caller_ext_number;
+
+-- Note: SQLite doesn't support DROP COLUMN, so we can't easily remove the columns
+-- In a real rollback scenario, you'd need to recreate the table without these columns`,
+		},
+		{
+			Version:     7,
+			Name:        "add_voicebox_status",
+			Description: "Add voiceBox status to support voicemail detection",
+			UpSQL: `-- In SQLite, we cannot modify CHECK constraints directly
+-- We need to recreate the table with the new constraint
+
+-- Create a temporary table with the updated constraint
+CREATE TABLE calls_temp (
+    call_id TEXT PRIMARY KEY, -- UUID as text for better readability
+    line INTEGER NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('idle', 'ringing', 'calling', 'talking', 'voiceBox', 'missedCall', 'notReached', 'finished')),
+    finish_state TEXT CHECK (finish_state IN ('missedCall', 'notReached', 'finished')),
+    caller TEXT,
+    called TEXT,
+    caller_msn TEXT,
+    called_msn TEXT,
+    trunk TEXT,
+    start_timestamp DATETIME,
+    connect_timestamp DATETIME,
+    end_timestamp DATETIME,
+    duration INTEGER, -- Duration in seconds
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    caller_extension_json TEXT,
+    called_extension_json TEXT
+);
+
+-- Copy all existing data
+INSERT INTO calls_temp SELECT * FROM calls;
+
+-- Drop the old table
+DROP TABLE calls;
+
+-- Rename the new table
+ALTER TABLE calls_temp RENAME TO calls;
+
+-- Recreate all indexes
+CREATE INDEX idx_calls_new_line ON calls(line);
+CREATE INDEX idx_calls_new_status ON calls(status);
+CREATE INDEX idx_calls_new_start_timestamp ON calls(start_timestamp);
+CREATE INDEX idx_calls_new_caller_msn ON calls(caller_msn);
+CREATE INDEX idx_calls_new_called_msn ON calls(called_msn);
+CREATE INDEX idx_calls_caller ON calls(caller);
+CREATE INDEX idx_calls_called ON calls(called);
+CREATE INDEX idx_calls_caller_ext_number ON calls(json_extract(caller_extension_json, '$.number'));
+CREATE INDEX idx_calls_called_ext_number ON calls(json_extract(called_extension_json, '$.number'));
+CREATE INDEX idx_calls_caller_ext_type ON calls(json_extract(caller_extension_json, '$.type'));
+CREATE INDEX idx_calls_called_ext_type ON calls(json_extract(called_extension_json, '$.type'));`,
+			DownSQL: `-- Rollback by recreating table without voiceBox status
+-- This is a complex rollback that would need table recreation`,
+		},
+		{
+			Version:     8,
+			Name:        "add_voicebox_finish_state",
+			Description: "Add voiceBox as valid finish_state for VOICEBOX calls",
+			UpSQL: `-- Create new table with updated constraint for both status and finish_state
+CREATE TABLE IF NOT EXISTS calls_new (
+    call_id TEXT PRIMARY KEY,
+    line INTEGER NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('idle', 'ringing', 'calling', 'talking', 'voiceBox', 'missedCall', 'notReached', 'finished')),
+    finish_state TEXT CHECK (finish_state IN ('missedCall', 'notReached', 'finished', 'voiceBox')),
+    caller TEXT,
+    called TEXT,
+    caller_msn TEXT,
+    called_msn TEXT,
+    trunk TEXT,
+    start_timestamp DATETIME,
+    connect_timestamp DATETIME,
+    end_timestamp DATETIME,
+    duration INTEGER,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    caller_extension_json TEXT,
+    called_extension_json TEXT
+);
+
+-- Copy data from old table
+INSERT INTO calls_new SELECT * FROM calls;
+
+-- Drop the old table
+DROP TABLE calls;
+
+-- Rename the new table
+ALTER TABLE calls_new RENAME TO calls;
+
+-- Recreate all indexes
+CREATE INDEX idx_calls_new_line ON calls(line);
+CREATE INDEX idx_calls_new_status ON calls(status);
+CREATE INDEX idx_calls_new_start_timestamp ON calls(start_timestamp);
+CREATE INDEX idx_calls_new_caller_msn ON calls(caller_msn);
+CREATE INDEX idx_calls_new_called_msn ON calls(called_msn);
+CREATE INDEX idx_calls_caller ON calls(caller);
+CREATE INDEX idx_calls_called ON calls(called);
+CREATE INDEX idx_calls_caller_ext_number ON calls(json_extract(caller_extension_json, '$.number'));
+CREATE INDEX idx_calls_called_ext_number ON calls(json_extract(called_extension_json, '$.number'));
+CREATE INDEX idx_calls_caller_ext_type ON calls(json_extract(caller_extension_json, '$.type'));
+CREATE INDEX idx_calls_called_ext_type ON calls(json_extract(called_extension_json, '$.type'));`,
+			DownSQL: `-- Rollback by recreating table without voiceBox in finish_state
+-- This is a complex rollback that would need table recreation`,
+		},
+		{
+			Version:     9,
+			Name:        "update_messagebox_to_voicebox",
+			Description: "Update existing messageBox status values to voiceBox for consistency",
+			UpSQL: `-- Update any existing messageBox status to voiceBox
+UPDATE calls SET status = 'voiceBox' WHERE status = 'messageBox';`,
+			DownSQL: `-- Rollback: Update voiceBox back to messageBox
+UPDATE calls SET status = 'messageBox' WHERE status = 'voiceBox';`,
+		},
 	}
 }

@@ -348,3 +348,54 @@ func TestTimeoutCancellation(t *testing.T) {
 
 	fsm.Cleanup()
 }
+
+func TestVoiceBoxFinishState(t *testing.T) {
+	fsm := NewCallStateMachine(nil)
+
+	// Test 1: Direct transition to VoiceBox should set finishState to voiceBox
+	event := &CallEvent{
+		ID:              "test-id",
+		Type:            CallTypeConnect,
+		CalledExtension: &ExtensionInfo{Type: "VOICEBOX"},
+	}
+
+	// Start with ringing
+	fsm.ProcessEvent(CallTypeRing)
+	if fsm.GetState() != CallStatusRinging {
+		t.Errorf("Expected state ringing, got %v", fsm.GetState())
+	}
+
+	// Connect to VoiceBox
+	fsm.ProcessEventWithContext(CallTypeConnect, event)
+	if fsm.GetState() != CallStatusVoiceBox {
+		t.Errorf("Expected state voiceBox, got %v", fsm.GetState())
+	}
+
+	// Check that finishState is set to voiceBox
+	if fsm.finishState == nil {
+		t.Errorf("Expected finishState to be set, got nil")
+	} else if *fsm.finishState != CallStatusVoiceBox {
+		t.Errorf("Expected finishState to be voiceBox, got %v", *fsm.finishState)
+	}
+
+	// Wait for first timeout to finished
+	time.Sleep(1200 * time.Millisecond)
+	if fsm.GetState() != CallStatusFinished {
+		t.Errorf("Expected state finished after first timeout, got %v", fsm.GetState())
+	}
+
+	// Wait for second timeout to idle
+	time.Sleep(1200 * time.Millisecond)
+	if fsm.GetState() != CallStatusIdle {
+		t.Errorf("Expected state idle after second timeout, got %v", fsm.GetState())
+	}
+
+	// finishState should still be voiceBox
+	if fsm.finishState == nil {
+		t.Errorf("Expected finishState to be preserved, got nil")
+	} else if *fsm.finishState != CallStatusVoiceBox {
+		t.Errorf("Expected finishState to remain voiceBox, got %v", *fsm.finishState)
+	}
+
+	fsm.Cleanup()
+}
