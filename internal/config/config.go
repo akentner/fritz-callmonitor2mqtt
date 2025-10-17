@@ -50,16 +50,18 @@ type PBXConfig struct {
 
 // MQTTConfig contains MQTT broker settings
 type MQTTConfig struct {
-	Broker         string        `mapstructure:"broker"`
-	Port           int           `mapstructure:"port"`
-	Username       string        `mapstructure:"username"`
-	Password       string        `mapstructure:"password"`
-	ClientID       string        `mapstructure:"client_id"`
-	TopicPrefix    string        `mapstructure:"topic_prefix"`
-	QoS            byte          `mapstructure:"qos"`
-	Retain         bool          `mapstructure:"retain"`
-	KeepAlive      time.Duration `mapstructure:"keep_alive"`
-	ConnectTimeout time.Duration `mapstructure:"connect_timeout"`
+	Broker           string        `mapstructure:"broker"`
+	Port             int           `mapstructure:"port"`
+	Username         string        `mapstructure:"username"`
+	Password         string        `mapstructure:"password"`
+	ClientID         string        `mapstructure:"client_id"`
+	TopicPrefix      string        `mapstructure:"topic_prefix"`
+	QoS              byte          `mapstructure:"qos"`
+	Retain           bool          `mapstructure:"retain"`
+	KeepAlive        time.Duration `mapstructure:"keep_alive"`
+	ConnectTimeout   time.Duration `mapstructure:"connect_timeout"`
+	DeviceName       string        `mapstructure:"device_name"`       // Home Assistant device name
+	DeviceIdentifier string        `mapstructure:"device_identifier"` // Home Assistant device identifier
 }
 
 // AppConfig contains general application settings
@@ -91,16 +93,18 @@ func LoadConfig() (*Config, error) {
 			Extensions:    loadExtensionsFromEnv(),
 		},
 		MQTT: MQTTConfig{
-			Broker:         getEnvOrDefault("FRITZ_CALLMONITOR_MQTT_BROKER", "localhost"),
-			Port:           getEnvIntOrDefault("FRITZ_CALLMONITOR_MQTT_PORT", 1883),
-			Username:       getEnvOrDefault("FRITZ_CALLMONITOR_MQTT_USERNAME", ""),
-			Password:       getEnvOrDefault("FRITZ_CALLMONITOR_MQTT_PASSWORD", ""),
-			ClientID:       getEnvOrDefault("FRITZ_CALLMONITOR_MQTT_CLIENT_ID", "fritz-callmonitor2mqtt"),
-			TopicPrefix:    getEnvOrDefault("FRITZ_CALLMONITOR_MQTT_TOPIC_PREFIX", "fritz/callmonitor"),
-			QoS:            byte(getEnvIntOrDefault("FRITZ_CALLMONITOR_MQTT_QOS", 1)),
-			Retain:         getEnvBoolOrDefault("FRITZ_CALLMONITOR_MQTT_RETAIN", true),
-			KeepAlive:      getEnvDurationOrDefault("FRITZ_CALLMONITOR_MQTT_KEEP_ALIVE", 60*time.Second),
-			ConnectTimeout: getEnvDurationOrDefault("FRITZ_CALLMONITOR_MQTT_CONNECT_TIMEOUT", 30*time.Second),
+			Broker:           getEnvOrDefault("FRITZ_CALLMONITOR_MQTT_BROKER", "localhost"),
+			Port:             getEnvIntOrDefault("FRITZ_CALLMONITOR_MQTT_PORT", 1883),
+			Username:         getEnvOrDefault("FRITZ_CALLMONITOR_MQTT_USERNAME", ""),
+			Password:         getEnvOrDefault("FRITZ_CALLMONITOR_MQTT_PASSWORD", ""),
+			ClientID:         getEnvOrDefault("FRITZ_CALLMONITOR_MQTT_CLIENT_ID", "fritz-callmonitor2mqtt"),
+			TopicPrefix:      getEnvOrDefault("FRITZ_CALLMONITOR_MQTT_TOPIC_PREFIX", "fritz/callmonitor"),
+			QoS:              byte(getEnvIntOrDefault("FRITZ_CALLMONITOR_MQTT_QOS", 1)),
+			Retain:           getEnvBoolOrDefault("FRITZ_CALLMONITOR_MQTT_RETAIN", true),
+			KeepAlive:        getEnvDurationOrDefault("FRITZ_CALLMONITOR_MQTT_KEEP_ALIVE", 60*time.Second),
+			ConnectTimeout:   getEnvDurationOrDefault("FRITZ_CALLMONITOR_MQTT_CONNECT_TIMEOUT", 30*time.Second),
+			DeviceName:       getEnvOrDefault("FRITZ_CALLMONITOR_MQTT_DEVICE_NAME", "FRITZ!Box Callmonitor"),
+			DeviceIdentifier: getEnvOrDefault("FRITZ_CALLMONITOR_MQTT_DEVICE_IDENTIFIER", "fritz-callmonitor2mqtt"),
 		},
 		App: AppConfig{
 			LogLevel:           getEnvOrDefault("FRITZ_CALLMONITOR_APP_LOG_LEVEL", "info"),

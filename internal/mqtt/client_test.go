@@ -26,6 +26,9 @@ func createTestClient() *Client {
 		nil,
 		[]string{"12345", "67890"},
 		30,
+		"Test FRITZ!Box Callmonitor",
+		"fritz-callmonitor2mqtt-test",
+		"test-version",
 	)
 }
 
@@ -262,6 +265,7 @@ func TestFSMDebugTopicsOnlyOnDebugLevel(t *testing.T) {
 		"localhost", 1883, "", "", "test", "test", 1, true,
 		60*time.Second, 30*time.Second, "info",
 		nil, nil, []string{}, 30,
+		"Test Device", "test-device", "test-version",
 	)
 
 	// Test with debug log level - FSM topics should be published
@@ -269,6 +273,7 @@ func TestFSMDebugTopicsOnlyOnDebugLevel(t *testing.T) {
 		"localhost", 1883, "", "", "test", "test", 1, true,
 		60*time.Second, 30*time.Second, "debug",
 		nil, nil, []string{}, 30,
+		"Test Device", "test-device", "test-version",
 	)
 
 	// Verify log level is set correctly

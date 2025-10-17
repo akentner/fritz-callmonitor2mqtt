@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
@@ -47,9 +48,13 @@ func main() {
 		log.Fatalf("Failed to load configuration: %v", err)
 	}
 
+	// Setup structured logging based on configuration
+	setupLogging(cfg.App.LogLevel)
+
 	// Validate configuration
 	if err := cfg.Validate(); err != nil {
-		log.Fatalf("Invalid configuration: %v", err)
+		slog.Error("Invalid configuration", "error", err)
+		os.Exit(1)
 	}
 
 	if *configTest {
@@ -58,7 +63,7 @@ func main() {
 		os.Exit(0)
 	}
 
-	log.Printf("Starting fritz-callmonitor2mqtt %s...", version)
+	slog.Info("Starting fritz-callmonitor2mqtt", "version", version)
 
 	// Log configuration summary
 	cfg.LogConfigurationSummary()
@@ -74,7 +79,8 @@ func main() {
 	// Initialize database client first
 	dbClient, err := database.NewClient(cfg.Database.DataDir)
 	if err != nil {
-		log.Fatalf("Failed to create database client: %v", err)
+		slog.Error("Failed to create database client", "error", err)
+		os.Exit(1)
 	}
 
 	// Initialize MQTT client with database client and PBX config
@@ -94,24 +100,30 @@ func main() {
 		&cfg.PBX,
 		cfg.PBX.MSN,
 		cfg.App.MSNCallHistorySize,
+		cfg.MQTT.DeviceName,
+		cfg.MQTT.DeviceIdentifier,
+		version,
 	)
 
 	// Connect to database
 	if err := dbClient.Connect(); err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
+		slog.Error("Failed to connect to database", "error", err)
+		os.Exit(1)
 	}
-	log.Printf("Database: %s", dbClient.GetDatabasePath())
+	slog.Info("Database connected", "path", dbClient.GetDatabasePath())
 
 	// Run migrations
 	if err := dbClient.RunEmbeddedMigrations(); err != nil {
-		log.Fatalf("Failed to run database migrations: %v", err)
+		slog.Error("Failed to run database migrations", "error", err)
+		os.Exit(1)
 	}
-	log.Println("Database migrations completed successfully")
+	slog.Info("Database migrations completed successfully")
 
 	// Initialize callmonitor client
 	timezone, err := cfg.GetLocation()
 	if err != nil {
-		log.Fatalf("Failed to load timezone: %v", err)
+		slog.Error("Failed to load timezone", "error", err)
+		os.Exit(1)
 	}
 	callmonitorClient := callmonitor.NewClient(cfg.FritzBox.Host, cfg.FritzBox.Port, timezone, cfg.PBX.CountryCode, cfg.PBX.LocalAreaCode, cfg.PBX.MSN)
 
@@ -123,7 +135,10 @@ func main() {
 
 	// Initialize call manager with MQTT and database integration
 	callManager := types.NewCallManagerWithMQTTAndDB(mqttClient, dbClient, func(line int, oldStatus, newStatus types.CallStatus, event *types.CallEvent) {
-		log.Printf("Line %d status changed: %s -> %s", line, oldStatus, newStatus)
+		slog.Debug("Line status changed", 
+			"line", line, 
+			"old_status", oldStatus, 
+			"new_status", newStatus)
 	})
 
 	// Start the application
@@ -139,7 +154,7 @@ func main() {
 	// Run application in background
 	go func() {
 		if err := app.Run(); err != nil {
-			log.Printf("Application error: %v", err)
+			slog.Error("Application error", "error", err)
 			cancel()
 		}
 	}()
@@ -147,14 +162,14 @@ func main() {
 	// Wait for shutdown signal
 	select {
 	case sig := <-sigChan:
-		log.Printf("Received signal %v, shutting down gracefully...", sig)
+		slog.Info("Received signal, shutting down gracefully...", "signal", sig)
 	case <-ctx.Done():
-		log.Println("Context cancelled, shutting down...")
+		slog.Info("Context cancelled, shutting down...")
 	}
 
 	// Shutdown
 	app.Shutdown()
-	log.Println("fritz-callmonitor2mqtt stopped")
+	slog.Info("fritz-callmonitor2mqtt stopped")
 }
 
 // Application holds all application components
@@ -170,15 +185,15 @@ type Application struct {
 // Run starts the main application loop
 func (app *Application) Run() error {
 	// Connect to MQTT broker
-	log.Println("Connecting to MQTT broker...")
+	slog.Info("Connecting to MQTT broker...")
 	if err := app.mqttClient.Connect(); err != nil {
 		return fmt.Errorf("failed to connect to MQTT broker: %w", err)
 	}
-	log.Println("Connected to MQTT broker")
+	slog.Info("Connected to MQTT broker")
 
 	// Bootstrap MQTT state from database
 	if err := app.mqttClient.BootstrapFromDatabase(); err != nil {
-		log.Printf("Bootstrap from database failed: %v", err)
+		slog.Warn("Bootstrap from database failed", "error", err)
 		// Continue anyway - this is not critical
 	}
 
@@ -190,10 +205,10 @@ func (app *Application) Run() error {
 		default:
 		}
 
-		log.Println("Connecting to FRITZ!Box callmonitor...")
+		slog.Info("Connecting to FRITZ!Box callmonitor...")
 		if err := app.callmonitorClient.Connect(); err != nil {
-			log.Printf("Failed to connect to FRITZ!Box: %v", err)
-			log.Printf("Retrying in %v...", app.config.App.ReconnectDelay)
+			slog.Error("Failed to connect to FRITZ!Box", "error", err)
+			slog.Info("Retrying connection...", "delay", app.config.App.ReconnectDelay)
 
 			select {
 			case <-time.After(app.config.App.ReconnectDelay):
@@ -203,11 +218,11 @@ func (app *Application) Run() error {
 			}
 		}
 
-		log.Println("Connected to FRITZ!Box callmonitor")
+		slog.Info("Connected to FRITZ!Box callmonitor")
 
 		// Process events until connection is lost
 		if err := app.processEvents(); err != nil {
-			log.Printf("Event processing error: %v", err)
+			slog.Error("Event processing error", "error", err)
 		}
 
 		// Clean up connection
@@ -286,7 +301,7 @@ func (app *Application) enrichEventWithExtensions(event *types.CallEvent) {
 
 // Shutdown gracefully shuts down the application
 func (app *Application) Shutdown() {
-	log.Println("Shutting down application...")
+	slog.Info("Shutting down application...")
 
 	if app.callManager != nil {
 		app.callManager.Cleanup()
@@ -294,19 +309,19 @@ func (app *Application) Shutdown() {
 
 	if app.callmonitorClient != nil {
 		if err := app.callmonitorClient.Disconnect(); err != nil {
-			log.Printf("Error disconnecting callmonitor: %v", err)
+			slog.Error("Error disconnecting callmonitor", "error", err)
 		}
 	}
 
 	if app.mqttClient != nil {
 		if err := app.mqttClient.Disconnect(); err != nil {
-			log.Printf("Error disconnecting MQTT: %v", err)
+			slog.Error("Error disconnecting MQTT", "error", err)
 		}
 	}
 
 	if app.dbClient != nil {
 		if err := app.dbClient.Close(); err != nil {
-			log.Printf("Error closing database: %v", err)
+			slog.Error("Error closing database", "error", err)
 		}
 	}
 }
@@ -356,4 +371,37 @@ Examples:
   fritz-callmonitor2mqtt
 
 `)
+}
+
+// setupLogging configures the global slog logger based on the specified log level
+func setupLogging(logLevel string) {
+	var level slog.Level
+	
+	switch logLevel {
+	case "debug":
+		level = slog.LevelDebug
+	case "info":
+		level = slog.LevelInfo  
+	case "warn", "warning":
+		level = slog.LevelWarn
+	case "error":
+		level = slog.LevelError
+	default:
+		level = slog.LevelInfo
+	}
+
+	// Create a text handler for human-readable output
+	handler := slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		Level: level,
+		ReplaceAttr: func(groups []string, a slog.Attr) slog.Attr {
+			// Simplify the time format
+			if a.Key == slog.TimeKey {
+				return slog.String("time", a.Value.Time().Format("15:04:05"))
+			}
+			return a
+		},
+	})
+
+	// Set the global logger
+	slog.SetDefault(slog.New(handler))
 }

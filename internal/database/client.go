@@ -30,14 +30,8 @@ func NewClient(dataDir string) (*Client, error) {
 		return nil, fmt.Errorf("failed to create data directory %s: %w", dataDir, err)
 	}
 
-	// Ensure the database subdirectory exists
-	databaseDir := filepath.Join(dataDir, "database")
-	if err := os.MkdirAll(databaseDir, 0755); err != nil {
-		return nil, fmt.Errorf("failed to create database directory %s: %w", databaseDir, err)
-	}
-
-	// Database file path
-	databasePath := filepath.Join(databaseDir, "fritz-callmonitor.db")
+	// Database file path (directly in dataDir)
+	databasePath := filepath.Join(dataDir, "fritz-callmonitor.db")
 
 	return &Client{
 		dataDir:      dataDir,

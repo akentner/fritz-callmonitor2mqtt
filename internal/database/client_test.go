@@ -20,14 +20,8 @@ func TestNewClient(t *testing.T) {
 		t.Errorf("Data directory was not created")
 	}
 
-	// Check that database subdirectory was created
-	dbDir := filepath.Join(tempDir, "database")
-	if _, err := os.Stat(dbDir); os.IsNotExist(err) {
-		t.Errorf("Database directory was not created")
-	}
-
-	// Check database path
-	expectedPath := filepath.Join(dbDir, "fritz-callmonitor.db")
+	// Check database path (directly in dataDir now)
+	expectedPath := filepath.Join(tempDir, "fritz-callmonitor.db")
 	if client.GetDatabasePath() != expectedPath {
 		t.Errorf("Expected database path %s, got %s", expectedPath, client.GetDatabasePath())
 	}

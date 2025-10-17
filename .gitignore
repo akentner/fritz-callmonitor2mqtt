@@ -37,6 +37,7 @@ data/
 test_server*.py
 test.env
 config.env
+dev.env
 
 # Build artifacts  
 fritz-callmonitor2mqtt

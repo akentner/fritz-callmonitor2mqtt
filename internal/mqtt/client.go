@@ -3,7 +3,7 @@ package mqtt
 import (
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 	"sync"
 	"time"
@@ -29,6 +29,11 @@ type Client struct {
 	connectTimeout time.Duration
 	logLevel       string
 
+	// Home Assistant device configuration
+	deviceName       string
+	deviceIdentifier string
+	version          string
+
 	// Database client
 	db *database.Client
 
@@ -49,7 +54,7 @@ type Client struct {
 }
 
 // NewClient creates a new MQTT client
-func NewClient(broker string, port int, username, password, clientID, topicPrefix string, qos byte, retain bool, keepAlive, connectTimeout time.Duration, logLevel string, db *database.Client, pbxConfig *config.PBXConfig, msns []string, msnCallHistorySize int) *Client {
+func NewClient(broker string, port int, username, password, clientID, topicPrefix string, qos byte, retain bool, keepAlive, connectTimeout time.Duration, logLevel string, db *database.Client, pbxConfig *config.PBXConfig, msns []string, msnCallHistorySize int, deviceName, deviceIdentifier, version string) *Client {
 	client := &Client{
 		broker:                 broker,
 		port:                   port,
@@ -62,6 +67,9 @@ func NewClient(broker string, port int, username, password, clientID, topicPrefi
 		keepAlive:              keepAlive,
 		connectTimeout:         connectTimeout,
 		logLevel:               logLevel,
+		deviceName:             deviceName,
+		deviceIdentifier:       deviceIdentifier,
+		version:                version,
 		db:                     db,
 		pbxConfig:              pbxConfig,
 		lineStatuses:           make(map[string]*types.LineStatus),
@@ -127,7 +135,9 @@ func (c *Client) Connect() error {
 	opts.SetConnectionLostHandler(c.onConnectionLost)
 	opts.SetOnConnectHandler(c.onConnect)
 
-	log.Printf("Connecting to MQTT broker %s with client ID %s", brokerURL, c.clientID)
+	slog.Info("Connecting to MQTT broker", 
+		"broker", brokerURL, 
+		"client_id", c.clientID)
 
 	// Create and connect client
 	c.client = mqtt.NewClient(opts)
@@ -136,7 +146,7 @@ func (c *Client) Connect() error {
 	}
 
 	c.connected = true
-	log.Println("Successfully connected to MQTT broker")
+	slog.Info("Successfully connected to MQTT broker")
 	return nil
 } // Disconnect closes the MQTT connection
 func (c *Client) Disconnect() error {
@@ -147,7 +157,7 @@ func (c *Client) Disconnect() error {
 		return nil
 	}
 
-	log.Println("Disconnecting from MQTT broker...")
+	slog.Info("Disconnecting from MQTT broker...")
 
 	// // Remove Home Assistant Discovery configurations
 	// if err := c.removeHomeAssistantDiscovery(); err != nil {
@@ -158,46 +168,46 @@ func (c *Client) Disconnect() error {
 	topic := fmt.Sprintf("%s/status", c.topicPrefix)
 	payload, err := c.createStatusMessage("offline")
 	if err != nil {
-		log.Printf("Failed to create offline message: %v", err)
+		slog.Error("Failed to create offline message", "error", err)
 	} else {
-		log.Printf("Publishing offline message to topic '%s'", topic)
+		slog.Debug("Publishing offline message", "topic", topic)
 		if token := c.client.Publish(topic, c.qos, c.retain, payload); token.Wait() && token.Error() != nil {
-			log.Printf("Failed to publish offline message: %v", token.Error())
+			slog.Error("Failed to publish offline message", "error", token.Error())
 		}
 	}
 
 	c.client.Disconnect(250) // Wait up to 250ms for graceful disconnect
 	c.connected = false
-	log.Println("Disconnected from MQTT broker")
+	slog.Info("Disconnected from MQTT broker")
 	return nil
 }
 
 // onConnect is called when the MQTT connection is established
 func (c *Client) onConnect(client mqtt.Client) {
-	log.Println("MQTT client connected")
+	slog.Info("MQTT client connected")
 
 	// Publish birth message
 	if err := c.publishBirthMessage(); err != nil {
-		log.Printf("Failed to publish birth message: %v", err)
+		slog.Error("Failed to publish birth message", "error", err)
 	}
 
 	// Setup Home Assistant MQTT Discovery
 	if err := c.setupHomeAssistantDiscovery(); err != nil {
-		log.Printf("Failed to setup Home Assistant discovery: %v", err)
+		slog.Error("Failed to setup Home Assistant discovery", "error", err)
 	}
 
 	// Subscribe to phone number RPC topics
 	if err := c.subscribeToPhoneNumberRPC(); err != nil {
-		log.Printf("Failed to subscribe to phone number RPC topics: %v", err)
+		slog.Error("Failed to subscribe to phone number RPC topics", "error", err)
 	}
 
 	// Load MSN call histories from database and publish them
 	if err := c.LoadMSNCallHistoriesFromDB(); err != nil {
-		log.Printf("Failed to load MSN call histories from database: %v", err)
+		slog.Error("Failed to load MSN call histories from database", "error", err)
 	} else {
 		// Publish all MSN call histories
 		if err := c.PublishAllMSNCallHistories(); err != nil {
-			log.Printf("Failed to publish MSN call histories: %v", err)
+			slog.Error("Failed to publish MSN call histories", "error", err)
 		}
 	}
 }
@@ -207,7 +217,7 @@ func (c *Client) onConnectionLost(client mqtt.Client, err error) {
 	c.mu.Lock()
 	c.connected = false
 	c.mu.Unlock()
-	log.Printf("MQTT connection lost: %v", err)
+	slog.Error("MQTT connection lost", "error", err)
 }
 
 // IsConnected returns the connection status
@@ -402,7 +412,9 @@ func (c *Client) publish(topic string, payload []byte) error {
 		return fmt.Errorf("MQTT client not connected")
 	}
 
-	log.Printf("Publishing to topic '%s': %s", topic, string(payload))
+	slog.Debug("Publishing message", 
+		"topic", topic, 
+		"payload", string(payload))
 
 	token := c.client.Publish(topic, c.qos, c.retain, payload)
 	if token.Wait() && token.Error() != nil {
@@ -418,7 +430,9 @@ func (c *Client) publishWithoutRetain(topic string, payload []byte) error {
 		return fmt.Errorf("MQTT client not connected")
 	}
 
-	log.Printf("Publishing to topic '%s' (no retain): %s", topic, string(payload))
+	slog.Debug("Publishing message without retain", 
+		"topic", topic, 
+		"payload", string(payload))
 
 	token := c.client.Publish(topic, c.qos, false, payload)
 	if token.Wait() && token.Error() != nil {
@@ -596,7 +610,9 @@ func (c *Client) updateMSNCallHistories(event types.CallEvent) {
 			// Publish updated history
 			if c.connected {
 				if err := c.publishMSNCallHistory(msn, history); err != nil {
-					log.Printf("Failed to publish MSN call history for %s: %v", msn, err)
+					slog.Error("Failed to publish MSN call history", 
+						"msn", msn, 
+						"error", err)
 				}
 			}
 		}
@@ -615,9 +631,10 @@ func (c *Client) publishMSNCallHistory(msn string, history *types.MSNCallHistory
 		return fmt.Errorf("failed to marshal MSN call history: %w", err)
 	}
 
-	if c.logLevel == "debug" {
-		log.Printf("Publishing MSN call history to topic '%s': %d calls", topic, len(history.Calls))
-	}
+	slog.Debug("Publishing MSN call history", 
+		"topic", topic, 
+		"msn", msn,
+		"call_count", len(history.Calls))
 
 	return c.publishWithoutRetain(topic, payload)
 }
@@ -635,7 +652,9 @@ func (c *Client) LoadMSNCallHistoriesFromDB() error {
 		// Load calls from database for this MSN
 		dbCalls, err := c.db.GetCallsByMSN(msn, history.MaxSize)
 		if err != nil {
-			log.Printf("Failed to load calls from database for MSN %s: %v", msn, err)
+			slog.Error("Failed to load calls from database", 
+				"msn", msn, 
+				"error", err)
 			continue
 		}
 
@@ -764,9 +783,9 @@ func (c *Client) LoadMSNCallHistoriesFromDB() error {
 		history.Calls = msnCallEvents
 		history.UpdatedAt = time.Now()
 
-		if c.logLevel == "debug" {
-			log.Printf("Loaded %d calls from database for MSN %s", len(msnCallEvents), msn)
-		}
+		slog.Debug("Loaded calls from database", 
+			"msn", msn, 
+			"call_count", len(msnCallEvents))
 	}
 
 	return nil
@@ -783,7 +802,9 @@ func (c *Client) PublishAllMSNCallHistories() error {
 
 	for msn, history := range c.msnCallHistories {
 		if err := c.publishMSNCallHistory(msn, history); err != nil {
-			log.Printf("Failed to publish MSN call history for %s: %v", msn, err)
+			slog.Error("Failed to publish MSN call history", 
+				"msn", msn, 
+				"error", err)
 			// Continue with other MSNs even if one fails
 		}
 	}
@@ -808,7 +829,7 @@ func (c *Client) publishBirthMessage() error {
 		return fmt.Errorf("failed to create birth message: %w", err)
 	}
 
-	log.Printf("Publishing birth message to topic '%s'", topic)
+	slog.Debug("Publishing birth message", "topic", topic)
 	return c.publish(topic, payload)
 }
 
@@ -939,37 +960,39 @@ func (c *Client) getValidTransitionsForStatus(status types.CallStatus) []types.C
 // subscribeToPhoneNumberRPC subscribes to phone number RPC topics
 func (c *Client) subscribeToPhoneNumberRPC() error {
 	if c.db == nil {
-		log.Printf("Database client not available, skipping phone number RPC subscription")
+		slog.Warn("Database client not available, skipping phone number RPC subscription")
 		return nil
 	}
 
 	// Subscribe to phone_number RPC request topic
 	topic := fmt.Sprintf("%s/phone_number/request", c.topicPrefix)
-	log.Printf("Subscribing to phone number RPC topic: %s", topic)
+	slog.Info("Subscribing to phone number RPC topic", "topic", topic)
 
 	if token := c.client.Subscribe(topic, c.qos, c.handlePhoneNumberRPC); token.Wait() && token.Error() != nil {
 		return fmt.Errorf("failed to subscribe to phone number RPC topic %s: %w", topic, token.Error())
 	}
 
-	log.Printf("Successfully subscribed to phone number RPC topic: %s", topic)
+	slog.Info("Successfully subscribed to phone number RPC topic", "topic", topic)
 	return nil
 }
 
 // handlePhoneNumberRPC handles phone number RPC requests
 func (c *Client) handlePhoneNumberRPC(client mqtt.Client, msg mqtt.Message) {
-	log.Printf("Received phone number RPC request on topic %s: %s", msg.Topic(), string(msg.Payload()))
+	slog.Info("Received phone number RPC request", 
+		"topic", msg.Topic(), 
+		"payload", string(msg.Payload()))
 
 	// Parse RPC request
 	var request database.PhoneNumberRPCRequest
 	if err := json.Unmarshal(msg.Payload(), &request); err != nil {
-		log.Printf("Failed to parse phone number RPC request: %v", err)
+		slog.Error("Failed to parse phone number RPC request", "error", err)
 		c.publishRPCError("", fmt.Sprintf("Invalid JSON: %v", err))
 		return
 	}
 
 	// Validate request
 	if err := request.Validate(); err != nil {
-		log.Printf("Invalid phone number RPC request: %v", err)
+		slog.Error("Invalid phone number RPC request", "error", err)
 		c.publishRPCError(request.ID, err.Error())
 		return
 	}
@@ -979,7 +1002,7 @@ func (c *Client) handlePhoneNumberRPC(client mqtt.Client, msg mqtt.Message) {
 
 	// Publish response
 	if err := c.publishRPCResponse(*response); err != nil {
-		log.Printf("Failed to publish RPC response: %v", err)
+		slog.Error("Failed to publish RPC response", "error", err)
 	}
 }
 
@@ -992,7 +1015,9 @@ func (c *Client) publishRPCResponse(response database.PhoneNumberRPCResponse) er
 		return fmt.Errorf("failed to marshal RPC response: %w", err)
 	}
 
-	log.Printf("Publishing RPC response to topic '%s': %s", topic, string(payload))
+	slog.Info("Publishing RPC response", 
+		"topic", topic, 
+		"payload", string(payload))
 
 	if token := c.client.Publish(topic, c.qos, false, payload); token.Wait() && token.Error() != nil {
 		return fmt.Errorf("failed to publish RPC response: %w", token.Error())
@@ -1011,42 +1036,42 @@ func (c *Client) publishRPCError(requestID, errorMsg string) {
 	}
 
 	if err := c.publishRPCResponse(response); err != nil {
-		log.Printf("Failed to publish RPC error response: %v", err)
+		slog.Error("Failed to publish RPC error response", "error", err)
 	}
 }
 
 // BootstrapFromDatabase loads current state from database and publishes initial MQTT messages
 func (c *Client) BootstrapFromDatabase() error {
-	log.Println("Bootstrapping MQTT state from database...")
+	slog.Info("Bootstrapping MQTT state from database...")
 
 	// 1. Bootstrap line statuses with real database data
 	if err := c.bootstrapLineStatuses(); err != nil {
-		log.Printf("Failed to bootstrap line statuses: %v", err)
+		slog.Error("Failed to bootstrap line statuses", "error", err)
 		return err
 	}
 
 	// 2. Bootstrap MSN call histories
 	if err := c.LoadMSNCallHistoriesFromDB(); err != nil {
-		log.Printf("Failed to load MSN call histories: %v", err)
+		slog.Error("Failed to load MSN call histories", "error", err)
 		return err
 	}
 
 	// 3. Publish all MSN call histories
 	if err := c.PublishAllMSNCallHistories(); err != nil {
-		log.Printf("Failed to publish MSN call histories: %v", err)
+		slog.Error("Failed to publish MSN call histories", "error", err)
 		return err
 	}
 
-	log.Println("Database bootstrap completed")
+	slog.Info("Database bootstrap completed")
 	return nil
 }
 
 // bootstrapLineStatuses creates line status based on real database events or publishes null for unused lines
 func (c *Client) bootstrapLineStatuses() error {
-	log.Println("Bootstrapping line statuses...")
+	slog.Info("Bootstrapping line statuses...")
 
 	if c.db == nil {
-		log.Println("No database available, skipping line status bootstrap")
+		slog.Warn("No database available, skipping line status bootstrap")
 		return nil
 	}
 
@@ -1055,7 +1080,9 @@ func (c *Client) bootstrapLineStatuses() error {
 		// Try to get the most recent call for this line from database
 		calls, err := c.db.GetCallsByLine(line, 1)
 		if err != nil {
-			log.Printf("Failed to query calls for line %d: %v", line, err)
+			slog.Error("Failed to query calls for line", 
+				"line", line, 
+				"error", err)
 			continue
 		}
 
@@ -1063,9 +1090,11 @@ func (c *Client) bootstrapLineStatuses() error {
 			// No calls found for this line - send retained null message
 			topic := fmt.Sprintf("%s/line/%d/status", c.topicPrefix, line)
 			if err := c.publishNull(topic); err != nil {
-				log.Printf("Failed to publish null message for line %d: %v", line, err)
+				slog.Error("Failed to publish null message for line", 
+					"line", line, 
+					"error", err)
 			} else {
-				log.Printf("Published null message for unused line %d", line)
+				slog.Debug("Published null message for unused line", "line", line)
 			}
 			continue
 		}
@@ -1137,13 +1166,17 @@ func (c *Client) bootstrapLineStatuses() error {
 
 		// Publish line status
 		if err := c.publishLineStatus(lineStatus); err != nil {
-			log.Printf("Failed to publish bootstrap line %d status: %v", line, err)
+			slog.Error("Failed to publish bootstrap line status", 
+				"line", line, 
+				"error", err)
 		} else {
-			log.Printf("Published bootstrap status for line %d from database (status: %s)", line, currentStatus)
+			slog.Info("Published bootstrap status for line from database", 
+				"line", line, 
+				"status", currentStatus)
 		}
 	}
 
-	log.Printf("Line status bootstrap completed")
+	slog.Info("Line status bootstrap completed")
 	return nil
 }
 
@@ -1153,7 +1186,7 @@ func (c *Client) publishNull(topic string) error {
 		return fmt.Errorf("MQTT client not connected")
 	}
 
-	log.Printf("Publishing null message to topic '%s'", topic)
+	slog.Debug("Publishing null message", "topic", topic)
 
 	// Send empty byte slice with retain=true to clear the topic
 	token := c.client.Publish(topic, c.qos, true, []byte{})
@@ -1200,38 +1233,40 @@ type HASensorConfig struct {
 
 // setupHomeAssistantDiscovery publishes Home Assistant MQTT Discovery configurations
 func (c *Client) setupHomeAssistantDiscovery() error {
-	if c.logLevel == "debug" {
-		log.Println("Setting up Home Assistant MQTT Discovery...")
-	}
+	slog.Debug("Setting up Home Assistant MQTT Discovery...")
 
 	device := &HADevice{
-		Identifiers:  []string{"fritz-callmonitor2mqtt"},
-		Name:         "FRITZ!Box Callmonitor",
+		Identifiers:  []string{c.deviceIdentifier},
+		Name:         c.deviceName,
 		Model:        "FRITZ!Box Callmonitor to MQTT Bridge",
 		Manufacturer: "fritz-callmonitor2mqtt",
-		SwVersion:    "v1.3.1",
+		SwVersion:    c.version,
 	}
 
 	// Setup discovery for line status sensors
 	for line := 0; line < 8; line++ {
 		if err := c.setupLineStatusDiscovery(line, device); err != nil {
-			log.Printf("Failed to setup line %d status discovery: %v", line, err)
+			slog.Error("Failed to setup line status discovery", 
+				"line", line, 
+				"error", err)
 		}
 		if err := c.setupLineLastEventDiscovery(line, device); err != nil {
-			log.Printf("Failed to setup line %d last_event discovery: %v", line, err)
+			slog.Error("Failed to setup line last_event discovery", 
+				"line", line, 
+				"error", err)
 		}
 	}
 
 	// Setup discovery for MSN call history sensors
 	for msn := range c.msnCallHistories {
 		if err := c.setupMSNCallHistoryDiscovery(msn, device); err != nil {
-			log.Printf("Failed to setup MSN %s call history discovery: %v", msn, err)
+			slog.Error("Failed to setup MSN call history discovery", 
+				"msn", msn, 
+				"error", err)
 		}
 	}
 
-	if c.logLevel == "debug" {
-		log.Println("Home Assistant MQTT Discovery setup completed")
-	}
+	slog.Debug("Home Assistant MQTT Discovery setup completed")
 	return nil
 }
 
@@ -1240,7 +1275,7 @@ func (c *Client) setupLineStatusDiscovery(line int, device *HADevice) error {
 	config := &HASensorConfig{
 		HAEntityConfig: HAEntityConfig{
 			Name:                 fmt.Sprintf("FRITZ!Box Line %d Status", line),
-			UniqueID:             fmt.Sprintf("fritz_callmonitor_line_%d_status", line),
+			UniqueID:             fmt.Sprintf("%s_line_%d_status", c.deviceIdentifier, line),
 			StateTopic:           fmt.Sprintf("%s/line/%d/status", c.topicPrefix, line),
 			Device:               device,
 			AvailabilityTopic:    fmt.Sprintf("%s/status", c.topicPrefix),
@@ -1253,7 +1288,7 @@ func (c *Client) setupLineStatusDiscovery(line int, device *HADevice) error {
 		Icon:                "mdi:phone",
 	}
 
-	discoveryTopic := fmt.Sprintf("homeassistant/sensor/fritz_callmonitor/line_%d_status/config", line)
+	discoveryTopic := fmt.Sprintf("homeassistant/sensor/%s/line_%d_status/config", c.deviceIdentifier, line)
 	return c.publishDiscoveryConfig(discoveryTopic, config)
 }
 
@@ -1262,7 +1297,7 @@ func (c *Client) setupLineLastEventDiscovery(line int, device *HADevice) error {
 	config := &HASensorConfig{
 		HAEntityConfig: HAEntityConfig{
 			Name:                 fmt.Sprintf("FRITZ!Box Line %d Last Event", line),
-			UniqueID:             fmt.Sprintf("fritz_callmonitor_line_%d_last_event", line),
+			UniqueID:             fmt.Sprintf("%s_line_%d_last_event", c.deviceIdentifier, line),
 			StateTopic:           fmt.Sprintf("%s/line/%d/last_event", c.topicPrefix, line),
 			Device:               device,
 			AvailabilityTopic:    fmt.Sprintf("%s/status", c.topicPrefix),
@@ -1275,7 +1310,7 @@ func (c *Client) setupLineLastEventDiscovery(line int, device *HADevice) error {
 		Icon:                "mdi:phone-log",
 	}
 
-	discoveryTopic := fmt.Sprintf("homeassistant/sensor/fritz_callmonitor/line_%d_last_event/config", line)
+	discoveryTopic := fmt.Sprintf("homeassistant/sensor/%s/line_%d_last_event/config", c.deviceIdentifier, line)
 	return c.publishDiscoveryConfig(discoveryTopic, config)
 }
 
@@ -1284,7 +1319,7 @@ func (c *Client) setupMSNCallHistoryDiscovery(msn string, device *HADevice) erro
 	config := &HASensorConfig{
 		HAEntityConfig: HAEntityConfig{
 			Name:                 fmt.Sprintf("FRITZ!Box MSN %s Call History", msn),
-			UniqueID:             fmt.Sprintf("fritz_callmonitor_msn_%s_call_history", msn),
+			UniqueID:             fmt.Sprintf("%s_msn_%s_call_history", c.deviceIdentifier, msn),
 			StateTopic:           fmt.Sprintf("%s/msn/%s/call_history", c.topicPrefix, msn),
 			Device:               device,
 			AvailabilityTopic:    fmt.Sprintf("%s/status", c.topicPrefix),
@@ -1298,7 +1333,7 @@ func (c *Client) setupMSNCallHistoryDiscovery(msn string, device *HADevice) erro
 		UnitOfMeasurement:   "calls",
 	}
 
-	discoveryTopic := fmt.Sprintf("homeassistant/sensor/fritz_callmonitor/msn_%s_call_history/config", msn)
+	discoveryTopic := fmt.Sprintf("homeassistant/sensor/%s/msn_%s_call_history/config", c.deviceIdentifier, msn)
 	return c.publishDiscoveryConfig(discoveryTopic, config)
 }
 
@@ -1309,9 +1344,7 @@ func (c *Client) publishDiscoveryConfig(topic string, config interface{}) error 
 		return fmt.Errorf("failed to marshal discovery config: %w", err)
 	}
 
-	if c.logLevel == "debug" {
-		log.Printf("Publishing HA discovery config to topic '%s'", topic)
-	}
+	slog.Debug("Publishing HA discovery config", "topic", topic)
 
 	// Discovery configs should be retained
 	token := c.client.Publish(topic, c.qos, true, payload)
@@ -1326,28 +1359,32 @@ func (c *Client) publishDiscoveryConfig(topic string, config interface{}) error 
 //
 //nolint:unused // Keep for future use or manual cleanup
 func (c *Client) removeHomeAssistantDiscovery() error {
-	if c.logLevel == "debug" {
-		log.Println("Removing Home Assistant MQTT Discovery configurations...")
-	}
+	slog.Debug("Removing Home Assistant MQTT Discovery configurations...")
 
 	// Remove discovery for line status sensors
 	for line := 0; line < 8; line++ {
-		statusTopic := fmt.Sprintf("homeassistant/sensor/fritz_callmonitor/line_%d_status/config", line)
+		statusTopic := fmt.Sprintf("homeassistant/sensor/%s/line_%d_status/config", c.deviceIdentifier, line)
 		if err := c.publishNull(statusTopic); err != nil {
-			log.Printf("Failed to remove line %d status discovery: %v", line, err)
+			slog.Error("Failed to remove line status discovery", 
+				"line", line, 
+				"error", err)
 		}
 
-		eventTopic := fmt.Sprintf("homeassistant/sensor/fritz_callmonitor/line_%d_last_event/config", line)
+		eventTopic := fmt.Sprintf("homeassistant/sensor/%s/line_%d_last_event/config", c.deviceIdentifier, line)
 		if err := c.publishNull(eventTopic); err != nil {
-			log.Printf("Failed to remove line %d last_event discovery: %v", line, err)
+			slog.Error("Failed to remove line last_event discovery", 
+				"line", line, 
+				"error", err)
 		}
 	}
 
 	// Remove discovery for MSN call history sensors
 	for msn := range c.msnCallHistories {
-		discoveryTopic := fmt.Sprintf("homeassistant/sensor/fritz_callmonitor/msn_%s_call_history/config", msn)
+		discoveryTopic := fmt.Sprintf("homeassistant/sensor/%s/msn_%s_call_history/config", c.deviceIdentifier, msn)
 		if err := c.publishNull(discoveryTopic); err != nil {
-			log.Printf("Failed to remove MSN %s call history discovery: %v", msn, err)
+			slog.Error("Failed to remove MSN call history discovery", 
+				"msn", msn, 
+				"error", err)
 		}
 	}
 

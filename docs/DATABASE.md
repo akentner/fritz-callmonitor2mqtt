@@ -7,7 +7,7 @@ The fritz-callmonitor2mqtt application uses SQLite for data persistence. The dat
 ## Database Location
 
 - **Data Directory**: Configurable via `FRITZ_CALLMONITOR_DATABASE_DATA_DIR` environment variable (default: `./data`)
-- **Database File**: `{data_dir}/database/fritz-callmonitor.db`
+- **Database File**: `{data_dir}/fritz-callmonitor.db`
 
 ## Schema Versioning
 
@@ -95,7 +95,7 @@ Example:
 You can access the database directly using sqlite3:
 
 ```bash
-sqlite3 ./data/database/fritz-callmonitor.db
+sqlite3 ./data/fritz-callmonitor.db
 
 # View current schema version
 SELECT * FROM schema_migrations;
