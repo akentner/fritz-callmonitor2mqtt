@@ -1224,11 +1224,34 @@ type HAEntityConfig struct {
 // HASensorConfig represents a Home Assistant sensor configuration
 type HASensorConfig struct {
 	HAEntityConfig
-	ValueTemplate          string `json:"value_template,omitempty"`
-	JSONAttributesTemplate string `json:"json_attributes_template,omitempty"`
-	JSONAttributesTopic    string `json:"json_attributes_topic,omitempty"`
-	Icon                   string `json:"icon,omitempty"`
-	UnitOfMeasurement      string `json:"unit_of_measurement,omitempty"`
+	ValueTemplate          string   `json:"value_template,omitempty"`
+	JSONAttributesTemplate string   `json:"json_attributes_template,omitempty"`
+	JSONAttributesTopic    string   `json:"json_attributes_topic,omitempty"`
+	Icon                   string   `json:"icon,omitempty"`
+	UnitOfMeasurement      string   `json:"unit_of_measurement,omitempty"`
+	DeviceClass            string   `json:"device_class,omitempty"`
+	Options                []string `json:"options,omitempty"`
+}
+
+// MarshalJSON implements custom JSON marshaling for HASensorConfig
+// Automatically sets DeviceClass to "enum" when Options is set
+func (h *HASensorConfig) MarshalJSON() ([]byte, error) {
+	// Create a type alias to avoid infinite recursion
+	type Alias HASensorConfig
+
+	// Create a copy of the struct
+	temp := struct {
+		*Alias
+	}{
+		Alias: (*Alias)(h),
+	}
+
+	// If Options is set and not empty, force DeviceClass to "enum"
+	if len(h.Options) > 0 {
+		temp.Alias.DeviceClass = "enum"
+	}
+
+	return json.Marshal(temp)
 }
 
 // setupHomeAssistantDiscovery publishes Home Assistant MQTT Discovery configurations
@@ -1286,6 +1309,16 @@ func (c *Client) setupLineStatusDiscovery(line int, device *HADevice) error {
 		ValueTemplate:       `{{ value_json.status }}`,
 		JSONAttributesTopic: fmt.Sprintf("%s/line/%d/status", c.topicPrefix, line),
 		Icon:                "mdi:phone",
+		Options: []string{
+			"idle",
+			"ringing",
+			"calling",
+			"talking",
+			"missedCall",
+			"notReached",
+			"finished",
+			"voiceBox",
+		},
 	}
 
 	discoveryTopic := fmt.Sprintf("homeassistant/sensor/%s/line_%d_status/config", c.deviceIdentifier, line)
@@ -1308,6 +1341,12 @@ func (c *Client) setupLineLastEventDiscovery(line int, device *HADevice) error {
 		ValueTemplate:       `{{ value_json.type }}`,
 		JSONAttributesTopic: fmt.Sprintf("%s/line/%d/last_event", c.topicPrefix, line),
 		Icon:                "mdi:phone-log",
+		Options: []string{
+			"ring",
+			"call",
+			"connect",
+			"disconnect",
+		},
 	}
 
 	discoveryTopic := fmt.Sprintf("homeassistant/sensor/%s/line_%d_last_event/config", c.deviceIdentifier, line)
