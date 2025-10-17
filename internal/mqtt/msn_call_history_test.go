@@ -95,6 +95,7 @@ func TestMSNCallHistoryMaxSize(t *testing.T) {
 		"localhost", 1883, "", "", "test", "test", 1, false,
 		60*time.Second, 30*time.Second, "info", nil, nil,
 		[]string{"12345"}, 2, // Only keep 2 calls
+		"Test Device", "test_device", "1.0.0", // Add missing parameters
 	)
 
 	// Add 3 disconnect events
@@ -130,6 +131,7 @@ func TestMSNCallHistoryEmptyArraySerialization(t *testing.T) {
 		"localhost", 1883, "", "", "test", "test", 1, false,
 		60*time.Second, 30*time.Second, "info", nil, nil,
 		[]string{"12345"}, 30,
+		"Test Device", "test_device", "1.0.0", // Add missing parameters
 	)
 
 	// Get the empty MSN history

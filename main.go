@@ -135,9 +135,9 @@ func main() {
 
 	// Initialize call manager with MQTT and database integration
 	callManager := types.NewCallManagerWithMQTTAndDB(mqttClient, dbClient, func(line int, oldStatus, newStatus types.CallStatus, event *types.CallEvent) {
-		slog.Debug("Line status changed", 
-			"line", line, 
-			"old_status", oldStatus, 
+		slog.Debug("Line status changed",
+			"line", line,
+			"old_status", oldStatus,
 			"new_status", newStatus)
 	})
 
@@ -376,12 +376,12 @@ Examples:
 // setupLogging configures the global slog logger based on the specified log level
 func setupLogging(logLevel string) {
 	var level slog.Level
-	
+
 	switch logLevel {
 	case "debug":
 		level = slog.LevelDebug
 	case "info":
-		level = slog.LevelInfo  
+		level = slog.LevelInfo
 	case "warn", "warning":
 		level = slog.LevelWarn
 	case "error":

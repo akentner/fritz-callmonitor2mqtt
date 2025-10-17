@@ -135,8 +135,8 @@ func (c *Client) Connect() error {
 	opts.SetConnectionLostHandler(c.onConnectionLost)
 	opts.SetOnConnectHandler(c.onConnect)
 
-	slog.Info("Connecting to MQTT broker", 
-		"broker", brokerURL, 
+	slog.Info("Connecting to MQTT broker",
+		"broker", brokerURL,
 		"client_id", c.clientID)
 
 	// Create and connect client
@@ -412,8 +412,8 @@ func (c *Client) publish(topic string, payload []byte) error {
 		return fmt.Errorf("MQTT client not connected")
 	}
 
-	slog.Debug("Publishing message", 
-		"topic", topic, 
+	slog.Debug("Publishing message",
+		"topic", topic,
 		"payload", string(payload))
 
 	token := c.client.Publish(topic, c.qos, c.retain, payload)
@@ -430,8 +430,8 @@ func (c *Client) publishWithoutRetain(topic string, payload []byte) error {
 		return fmt.Errorf("MQTT client not connected")
 	}
 
-	slog.Debug("Publishing message without retain", 
-		"topic", topic, 
+	slog.Debug("Publishing message without retain",
+		"topic", topic,
 		"payload", string(payload))
 
 	token := c.client.Publish(topic, c.qos, false, payload)
@@ -610,8 +610,8 @@ func (c *Client) updateMSNCallHistories(event types.CallEvent) {
 			// Publish updated history
 			if c.connected {
 				if err := c.publishMSNCallHistory(msn, history); err != nil {
-					slog.Error("Failed to publish MSN call history", 
-						"msn", msn, 
+					slog.Error("Failed to publish MSN call history",
+						"msn", msn,
 						"error", err)
 				}
 			}
@@ -631,8 +631,8 @@ func (c *Client) publishMSNCallHistory(msn string, history *types.MSNCallHistory
 		return fmt.Errorf("failed to marshal MSN call history: %w", err)
 	}
 
-	slog.Debug("Publishing MSN call history", 
-		"topic", topic, 
+	slog.Debug("Publishing MSN call history",
+		"topic", topic,
 		"msn", msn,
 		"call_count", len(history.Calls))
 
@@ -652,8 +652,8 @@ func (c *Client) LoadMSNCallHistoriesFromDB() error {
 		// Load calls from database for this MSN
 		dbCalls, err := c.db.GetCallsByMSN(msn, history.MaxSize)
 		if err != nil {
-			slog.Error("Failed to load calls from database", 
-				"msn", msn, 
+			slog.Error("Failed to load calls from database",
+				"msn", msn,
 				"error", err)
 			continue
 		}
@@ -783,8 +783,8 @@ func (c *Client) LoadMSNCallHistoriesFromDB() error {
 		history.Calls = msnCallEvents
 		history.UpdatedAt = time.Now()
 
-		slog.Debug("Loaded calls from database", 
-			"msn", msn, 
+		slog.Debug("Loaded calls from database",
+			"msn", msn,
 			"call_count", len(msnCallEvents))
 	}
 
@@ -802,8 +802,8 @@ func (c *Client) PublishAllMSNCallHistories() error {
 
 	for msn, history := range c.msnCallHistories {
 		if err := c.publishMSNCallHistory(msn, history); err != nil {
-			slog.Error("Failed to publish MSN call history", 
-				"msn", msn, 
+			slog.Error("Failed to publish MSN call history",
+				"msn", msn,
 				"error", err)
 			// Continue with other MSNs even if one fails
 		}
@@ -978,8 +978,8 @@ func (c *Client) subscribeToPhoneNumberRPC() error {
 
 // handlePhoneNumberRPC handles phone number RPC requests
 func (c *Client) handlePhoneNumberRPC(client mqtt.Client, msg mqtt.Message) {
-	slog.Info("Received phone number RPC request", 
-		"topic", msg.Topic(), 
+	slog.Info("Received phone number RPC request",
+		"topic", msg.Topic(),
 		"payload", string(msg.Payload()))
 
 	// Parse RPC request
@@ -1015,8 +1015,8 @@ func (c *Client) publishRPCResponse(response database.PhoneNumberRPCResponse) er
 		return fmt.Errorf("failed to marshal RPC response: %w", err)
 	}
 
-	slog.Info("Publishing RPC response", 
-		"topic", topic, 
+	slog.Info("Publishing RPC response",
+		"topic", topic,
 		"payload", string(payload))
 
 	if token := c.client.Publish(topic, c.qos, false, payload); token.Wait() && token.Error() != nil {
@@ -1080,8 +1080,8 @@ func (c *Client) bootstrapLineStatuses() error {
 		// Try to get the most recent call for this line from database
 		calls, err := c.db.GetCallsByLine(line, 1)
 		if err != nil {
-			slog.Error("Failed to query calls for line", 
-				"line", line, 
+			slog.Error("Failed to query calls for line",
+				"line", line,
 				"error", err)
 			continue
 		}
@@ -1090,8 +1090,8 @@ func (c *Client) bootstrapLineStatuses() error {
 			// No calls found for this line - send retained null message
 			topic := fmt.Sprintf("%s/line/%d/status", c.topicPrefix, line)
 			if err := c.publishNull(topic); err != nil {
-				slog.Error("Failed to publish null message for line", 
-					"line", line, 
+				slog.Error("Failed to publish null message for line",
+					"line", line,
 					"error", err)
 			} else {
 				slog.Debug("Published null message for unused line", "line", line)
@@ -1166,12 +1166,12 @@ func (c *Client) bootstrapLineStatuses() error {
 
 		// Publish line status
 		if err := c.publishLineStatus(lineStatus); err != nil {
-			slog.Error("Failed to publish bootstrap line status", 
-				"line", line, 
+			slog.Error("Failed to publish bootstrap line status",
+				"line", line,
 				"error", err)
 		} else {
-			slog.Info("Published bootstrap status for line from database", 
-				"line", line, 
+			slog.Info("Published bootstrap status for line from database",
+				"line", line,
 				"status", currentStatus)
 		}
 	}
@@ -1246,13 +1246,13 @@ func (c *Client) setupHomeAssistantDiscovery() error {
 	// Setup discovery for line status sensors
 	for line := 0; line < 8; line++ {
 		if err := c.setupLineStatusDiscovery(line, device); err != nil {
-			slog.Error("Failed to setup line status discovery", 
-				"line", line, 
+			slog.Error("Failed to setup line status discovery",
+				"line", line,
 				"error", err)
 		}
 		if err := c.setupLineLastEventDiscovery(line, device); err != nil {
-			slog.Error("Failed to setup line last_event discovery", 
-				"line", line, 
+			slog.Error("Failed to setup line last_event discovery",
+				"line", line,
 				"error", err)
 		}
 	}
@@ -1260,8 +1260,8 @@ func (c *Client) setupHomeAssistantDiscovery() error {
 	// Setup discovery for MSN call history sensors
 	for msn := range c.msnCallHistories {
 		if err := c.setupMSNCallHistoryDiscovery(msn, device); err != nil {
-			slog.Error("Failed to setup MSN call history discovery", 
-				"msn", msn, 
+			slog.Error("Failed to setup MSN call history discovery",
+				"msn", msn,
 				"error", err)
 		}
 	}
@@ -1365,15 +1365,15 @@ func (c *Client) removeHomeAssistantDiscovery() error {
 	for line := 0; line < 8; line++ {
 		statusTopic := fmt.Sprintf("homeassistant/sensor/%s/line_%d_status/config", c.deviceIdentifier, line)
 		if err := c.publishNull(statusTopic); err != nil {
-			slog.Error("Failed to remove line status discovery", 
-				"line", line, 
+			slog.Error("Failed to remove line status discovery",
+				"line", line,
 				"error", err)
 		}
 
 		eventTopic := fmt.Sprintf("homeassistant/sensor/%s/line_%d_last_event/config", c.deviceIdentifier, line)
 		if err := c.publishNull(eventTopic); err != nil {
-			slog.Error("Failed to remove line last_event discovery", 
-				"line", line, 
+			slog.Error("Failed to remove line last_event discovery",
+				"line", line,
 				"error", err)
 		}
 	}
@@ -1382,8 +1382,8 @@ func (c *Client) removeHomeAssistantDiscovery() error {
 	for msn := range c.msnCallHistories {
 		discoveryTopic := fmt.Sprintf("homeassistant/sensor/%s/msn_%s_call_history/config", c.deviceIdentifier, msn)
 		if err := c.publishNull(discoveryTopic); err != nil {
-			slog.Error("Failed to remove MSN call history discovery", 
-				"msn", msn, 
+			slog.Error("Failed to remove MSN call history discovery",
+				"msn", msn,
 				"error", err)
 		}
 	}
