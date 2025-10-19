@@ -83,7 +83,7 @@ jobs:
             echo "actionlint already cached"
           fi
       - name: Run GitHub Actions linter
-        run: |
+        run: |-
           if command -v actionlint &> /dev/null; then
             actionlint
           else

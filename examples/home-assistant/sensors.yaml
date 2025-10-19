@@ -140,9 +140,15 @@ template:
           {% endif %}
 
         json_attributes_topic: "fritz/callmonitor/line/1/last_event"
-        json_attributes_template: "{% set call = value_json %} {% if call.caller_name == null and call.caller %} {\n  \"unknown_number\": \"{{ call.caller }}\",\n  \"direction\": \"{{ call.direction }}\",\n  \"timestamp\": \"{{ call.timestamp }}\",\n  \"call_type\": \"incoming\",\n  \"line\": {{ call.line }},\n  \"can_add_contact\": true\n} {% elif call.called_name == null and call.called and call.direction == 'outbound' %} {\n  \"unknown_number\": \"{{ call.called }}\",\n  \"direction\": \"{{ call.direction }}\",\n  \"timestamp\": \"{{ call.timestamp }}\",\n  \"call_type\": \"outgoing\", \n  \"line\": {{ call.line }},\n  \"can_add_contact\": true\n} {% else %} {\n  \"unknown_number\": null,\n  \"can_add_contact\": false\n} {% endif %}\n"
+        json_attributes_template: "{% set call = value_json %} {% if call.caller_name == null and call.caller %} {\n  \"unknown_number\": \"{{ call.caller
+          }}\",\n  \"direction\": \"{{ call.direction }}\",\n  \"timestamp\": \"{{ call.timestamp }}\",\n  \"call_type\": \"incoming\",\n  \"line\": {{
+          call.line }},\n  \"can_add_contact\": true\n} {% elif call.called_name == null and call.called and call.direction == 'outbound' %} {\n  \"unknown_number\":
+          \"{{ call.called }}\",\n  \"direction\": \"{{ call.direction }}\",\n  \"timestamp\": \"{{ call.timestamp }}\",\n  \"call_type\": \"outgoing\",
+          \n  \"line\": {{ call.line }},\n  \"can_add_contact\": true\n} {% else %} {\n  \"unknown_number\": null,\n  \"can_add_contact\": false\n} {% endif
+          %}\n"
         icon: >
-          {% set call = value_json %} {% if (call.caller_name == null and call.caller) or (call.called_name == null and call.called and call.direction == 'outbound') %}
+          {% set call = value_json %} {% if (call.caller_name == null and call.caller) or (call.called_name == null and call.called and call.direction ==
+          'outbound') %}
 
 
 
@@ -170,7 +176,8 @@ template:
 
 
 
-            {% set resolved = calls | selectattr('caller_name', 'defined') | list | length + calls | selectattr('called_name', 'defined') | list | length %}
+            {% set resolved = calls | selectattr('caller_name', 'defined') | list | length + calls | selectattr('called_name', 'defined') | list | length
+          %}
             {% set total = calls | length * 2 %}
             {{ ((resolved / total) * 100) | round(1) }}
           {% else %}
@@ -184,7 +191,10 @@ template:
 
         json_attributes_topic: "fritz/callmonitor/history"
         json_attributes_template: >
-          {% set calls = value_json.calls %} {% if calls | length > 0 %} {% set resolved_callers = calls | selectattr('caller_name', 'defined') | list | length %} {% set resolved_called = calls | selectattr('called_name', 'defined') | list | length %} {% set unknown_callers = calls | rejectattr('caller_name', 'defined') | map(attribute='caller') | list | unique %} {% set unknown_called = calls | rejectattr('called_name', 'defined') | map(attribute='called') | list | unique %} {
+          {% set calls = value_json.calls %} {% if calls | length > 0 %} {% set resolved_callers = calls | selectattr('caller_name', 'defined') | list |
+          length %} {% set resolved_called = calls | selectattr('called_name', 'defined') | list | length %} {% set unknown_callers = calls | rejectattr('caller_name',
+          'defined') | map(attribute='caller') | list | unique %} {% set unknown_called = calls | rejectattr('called_name', 'defined') | map(attribute='called')
+          | list | unique %} {
 
 
 

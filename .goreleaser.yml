@@ -73,14 +73,13 @@ release:
   draft: false
   prerelease: auto
   name_template: "Release {{ .Tag }}"
-
-# Docker images disabled for now
-# Uncomment and create Dockerfile if needed
-# dockers:
-#   - image_templates:
-#       - "ghcr.io/akentner/fritz-callmonitor2mqtt:{{ .Version }}-amd64"
-#       - "ghcr.io/akentner/fritz-callmonitor2mqtt:latest-amd64"
-#     dockerfile: Dockerfile
-#     use: buildx
-#     build_flag_templates:
-#       - "--platform=linux/amd64"
+  # Docker images disabled for now
+  # Uncomment and create Dockerfile if needed
+  # dockers:
+  #   - image_templates:
+  #       - "ghcr.io/akentner/fritz-callmonitor2mqtt:{{ .Version }}-amd64"
+  #       - "ghcr.io/akentner/fritz-callmonitor2mqtt:latest-amd64"
+  #     dockerfile: Dockerfile
+  #     use: buildx
+  #     build_flag_templates:
+  #       - "--platform=linux/amd64"

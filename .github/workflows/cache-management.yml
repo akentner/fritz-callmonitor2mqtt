@@ -32,7 +32,7 @@ jobs:
           echo "Cache cleanup completed"
       - name: Cache info
         if: github.event.inputs.cache_action == 'info'
-        run: |
+        run: |-
           echo "📊 Cache information:"
           echo "- Go module cache: ~/.cache/go-build, ~/go/pkg/mod, ~/go/bin"
           echo "- Python cache: ~/.cache/pip, ~/.local/lib/python*/site-packages"

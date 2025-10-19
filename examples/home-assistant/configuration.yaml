@@ -92,7 +92,8 @@ template:
       - name: "Fritz Line 1 Last Call"
         state_topic: "fritz/callmonitor/line/1/last_event"
         value_template: >
-          {% set event = value_json %} {% set caller_info = event.caller_name or event.caller %} {% set called_info = event.called_name or event.called %} {% if event.caller_extension %}
+          {% set event = value_json %} {% set caller_info = event.caller_name or event.caller %} {% set called_info = event.called_name or event.called
+          %} {% if event.caller_extension %}
 
 
 
@@ -139,8 +140,10 @@ template:
             "calls": {{ value_json.calls | tojson }},
             "last_updated": "{{ value_json.last_updated }}",
             "total_calls": {{ value_json.calls | length }},
-            "internal_calls": {{ value_json.calls | selectattr('caller_extension', 'defined') | list | length + value_json.calls | selectattr('called_extension', 'defined') | list | length }},
-            "extension_types": {{ value_json.calls | map(attribute='caller_extension.type') | reject('none') | list + value_json.calls | map(attribute='called_extension.type') | reject('none') | list | unique | list | tojson }}
+            "internal_calls": {{ value_json.calls | selectattr('caller_extension', 'defined') | list | length + value_json.calls | selectattr('called_extension',
+          'defined') | list | length }},
+            "extension_types": {{ value_json.calls | map(attribute='caller_extension.type') | reject('none') | list + value_json.calls | map(attribute='called_extension.type')
+          | reject('none') | list | unique | list | tojson }}
           }
 
         unit_of_measurement: "calls"
@@ -149,7 +152,7 @@ template:
           - topic: "fritz/callmonitor/history"
       # MSN-specific call history sensors
       - name: "Fritz MSN Call History"
-        state_topic: "fritz/callmonitor/msn/+49123456789/history" # Replace with your MSN
+        state_topic: "fritz/callmonitor/msn/+49123456789/history"  # Replace with your MSN
         value_template: "{{ value_json.calls | length }}"
         json_attributes_topic: "fritz/callmonitor/msn/+49123456789/history"
         json_attributes_template: >
@@ -163,8 +166,11 @@ template:
             "calls": {{ value_json.calls | tojson }},
             "last_updated": "{{ value_json.updated_at }}",
             "total_calls": {{ value_json.calls | length }},
-            "extension_calls": {{ value_json.calls | selectattr('caller_extension', 'defined') | list | length + value_json.calls | selectattr('called_extension', 'defined') | list | length }},
-            "recent_extension_activity": {{ value_json.calls[:5] | selectattr('caller_extension', 'defined') | map(attribute='caller_extension.name') | list + value_json.calls[:5] | selectattr('called_extension', 'defined') | map(attribute='called_extension.name') | list | unique | list | tojson }}
+            "extension_calls": {{ value_json.calls | selectattr('caller_extension', 'defined') | list | length + value_json.calls | selectattr('called_extension',
+          'defined') | list | length }},
+            "recent_extension_activity": {{ value_json.calls[:5] | selectattr('caller_extension', 'defined') | map(attribute='caller_extension.name') |
+          list + value_json.calls[:5] | selectattr('called_extension', 'defined') | map(attribute='called_extension.name') | list | unique | list | tojson
+          }}
           }
 
         unit_of_measurement: "calls"

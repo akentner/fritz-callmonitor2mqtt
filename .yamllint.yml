@@ -4,7 +4,7 @@ extends: default
 rules:
   # Allow longer lines for readability
   line-length:
-    max: 150 # Increased to handle example files
+    max: 150  # Increased to handle example files
     level: warning
   # Allow more flexible indentation for GitHub Actions
   indentation:

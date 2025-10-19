@@ -9,7 +9,7 @@ input_text:
     mode: text
     max: 20
     initial: ""
-  # Contact name input for manual operations  
+  # Contact name input for manual operations
   fritz_contact_name:
     name: "Fritz Contact Name"
     icon: "mdi:account"
@@ -50,7 +50,7 @@ input_number:
     max: 1000
     step: 1
     initial: 50
-  # Search limit  
+  # Search limit
   fritz_search_limit:
     name: "Search Limit"
     icon: "mdi:magnify"

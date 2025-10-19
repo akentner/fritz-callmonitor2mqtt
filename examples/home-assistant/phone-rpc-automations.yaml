@@ -58,7 +58,9 @@
               data:
                 title: "📞 Contact Found"
                 message: >
-                  **{{ response.phone_number.phone_number }}** Name: {{ response.phone_number.name if response.phone_number.name else 'No name set' }} {% if response.phone_number.created_at %} Added: {{ response.phone_number.created_at | as_timestamp | timestamp_custom('%d.%m.%Y %H:%M') }} {% endif %}
+                  **{{ response.phone_number.phone_number }}** Name: {{ response.phone_number.name if response.phone_number.name else 'No name set' }} {%
+                  if response.phone_number.created_at %} Added: {{ response.phone_number.created_at | as_timestamp | timestamp_custom('%d.%m.%Y %H:%M')
+                  }} {% endif %}
 
                 notification_id: "fritz_rpc_{{ response.id }}"
         # Handle successful LIST/SEARCH response
@@ -72,7 +74,9 @@
                   📞 {{ 'Search Results' if 'search' in response.id else 'Phone Numbers' }}
 
                 message: >
-                  Found {{ response.count }} contact(s): {% for contact in response.phone_numbers[:10] %} • {{ contact.phone_number }}: {{ contact.name if contact.name else 'No name' }} {% endfor %} {% if response.phone_numbers | length > 10 %} ... and {{ response.phone_numbers | length - 10 }} more {% endif %}
+                  Found {{ response.count }} contact(s): {% for contact in response.phone_numbers[:10] %} • {{ contact.phone_number }}: {{ contact.name
+                  if contact.name else 'No name' }} {% endfor %} {% if response.phone_numbers | length > 10 %} ... and {{ response.phone_numbers | length
+                  - 10 }} more {% endif %}
 
                 notification_id: "fritz_rpc_{{ response.id }}"
         # Handle successful SET/DELETE response
@@ -85,9 +89,10 @@
                 title: >
                   ✅ {{ 'Contact Updated' if 'set' in response.id else 'Contact Deleted' if 'delete' in response.id else 'Operation Successful' }}
 
-                message: "{{ 'Contact has been updated successfully.' if 'set' in response.id else \n   'Contact has been deleted successfully.' if 'delete' in response.id else \n   'Operation completed successfully.' }}\n"
+                message: "{{ 'Contact has been updated successfully.' if 'set' in response.id else \n   'Contact has been deleted successfully.' if 'delete'
+                  in response.id else \n   'Operation completed successfully.' }}\n"
                 notification_id: "fritz_rpc_{{ response.id }}"
-        # Handle error response  
+        # Handle error response
         - conditions:
             - condition: template
               value_template: "{{ not response.success }}"
@@ -109,7 +114,8 @@
   condition:
     - condition: template
       value_template: >
-        {% set calls = trigger.to_state.attributes.calls %} {% set recent_calls = calls | selectattr('timestamp', '>', (now() - timedelta(days=7)).isoformat()) | list %} {% set unknown_numbers = [] %} {% for call in recent_calls %}
+        {% set calls = trigger.to_state.attributes.calls %} {% set recent_calls = calls | selectattr('timestamp', '>', (now() - timedelta(days=7)).isoformat())
+        | list %} {% set unknown_numbers = [] %} {% for call in recent_calls %}
 
 
 
@@ -137,7 +143,8 @@
       data:
         title: "📞 Frequent Unknown Callers"
         message: >
-          {% set calls = trigger.to_state.attributes.calls %} {% set recent_calls = calls | selectattr('timestamp', '>', (now() - timedelta(days=7)).isoformat()) | list %} {% set unknown_numbers = [] %} {% for call in recent_calls %}
+          {% set calls = trigger.to_state.attributes.calls %} {% set recent_calls = calls | selectattr('timestamp', '>', (now() - timedelta(days=7)).isoformat())
+          | list %} {% set unknown_numbers = [] %} {% for call in recent_calls %}
 
 
 
@@ -178,7 +185,8 @@
       entity_id: sensor.fritz_line_1_last_call
   condition:
     - condition: template
-      value_template: "{% set call = trigger.to_state.attributes %} {% set vip_patterns = ['0800', '0900', '+49800', '+49900'] %} {{ call.caller and not call.caller_name and \n   vip_patterns | select('in', call.caller) | list | length > 0 }}\n"
+      value_template: "{% set call = trigger.to_state.attributes %} {% set vip_patterns = ['0800', '0900', '+49800', '+49900'] %} {{ call.caller and not
+        call.caller_name and \n   vip_patterns | select('in', call.caller) | list | length > 0 }}\n"
   action:
     - service: script.fritz_set_phone_name
       data:
@@ -215,7 +223,7 @@
     - platform: time
       at: "02:00:00"
     - platform: time
-      at: "02:01:00" # Backup trigger
+      at: "02:01:00"  # Backup trigger
   condition:
     - condition: time
       weekday:
@@ -275,7 +283,7 @@
     - variables:
         call: "{{ states.sensor.fritz_line_1_last_call.attributes }}"
         is_unknown: "{{ call.caller_name == null }}"
-    - service: notify.mobile_app_your_phone # Replace with your device
+    - service: notify.mobile_app_your_phone  # Replace with your device
       data:
         title: "📞 Incoming Call"
         message: >
@@ -298,7 +306,9 @@
         data:
           tag: "fritz_incoming_call"
           group: "fritz_calls"
-          actions: "{% if is_unknown %} [\n  {\n    \"action\": \"FRITZ_ADD_UNKNOWN_CALLER\",\n    \"title\": \"Add Contact\"\n  },\n  {\n    \"action\": \"FRITZ_BLOCK_NUMBER\", \n    \"title\": \"Block Number\"\n  }\n] {% else %} [\n  {\n    \"action\": \"FRITZ_VIEW_CONTACT\",\n    \"title\": \"View Contact\"\n  }\n] {% endif %}\n"
+          actions: "{% if is_unknown %} [\n  {\n    \"action\": \"FRITZ_ADD_UNKNOWN_CALLER\",\n    \"title\": \"Add Contact\"\n  },\n  {\n    \"action\":
+            \"FRITZ_BLOCK_NUMBER\", \n    \"title\": \"Block Number\"\n  }\n] {% else %} [\n  {\n    \"action\": \"FRITZ_VIEW_CONTACT\",\n    \"title\":
+            \"View Contact\"\n  }\n] {% endif %}\n"
 # Contact resolution rate monitoring
 - id: fritz_monitor_contact_resolution_rate
   alias: "Fritz: Monitor Contact Resolution Rate"

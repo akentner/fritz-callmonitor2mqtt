@@ -97,7 +97,7 @@ dashboard_examples:
         service: script.fritz_add_last_unknown_caller
         service_data:
           contact_name: "Customer - {{ now().strftime('%Y%m%d') }}"
-  # Scenario 2: Home Security Dashboard  
+  # Scenario 2: Home Security Dashboard
   security_card:
     type: conditional
     conditions:
@@ -155,7 +155,8 @@ advanced_patterns:
       - variables:
           contacts: "{{ wait.trigger.payload_json.phone_numbers }}"
           duplicates: >
-            {% set names = contacts | map(attribute='name') | list %} {% set unique_names = names | unique | list %} {{ names | length - unique_names | length }}
+            {% set names = contacts | map(attribute='name') | list %} {% set unique_names = names | unique | list %} {{ names | length - unique_names |
+            length }}
 
       - condition: template
         value_template: "{{ duplicates > 0 }}"
@@ -202,7 +203,7 @@ performance_tips:
   - "Monitor MQTT topic throughput during bulk imports"
   - "Use persistent notifications instead of frequent popups"
   - "Cache frequent search results in input_text fields"
-# Security considerations  
+# Security considerations
 security_notes:
   - "Phone numbers are stored in SQLite database"
   - "MQTT topics should use authentication"
