@@ -1307,8 +1307,21 @@ func (c *Client) RepublishAllStates() error {
 		}
 	}
 
+	// Republish all MSN call histories
+	msnCount := 0
+	for msn, history := range c.msnCallHistories {
+		if err := c.publishMSNCallHistory(msn, history); err != nil {
+			slog.Error("Failed to republish MSN call history",
+				"msn", msn,
+				"error", err)
+		} else {
+			msnCount++
+		}
+	}
+
 	slog.Info("Republished MQTT states",
-		"line_statuses", publishedCount)
+		"line_statuses", publishedCount,
+		"msn_call_histories", msnCount)
 
 	return nil
 }
