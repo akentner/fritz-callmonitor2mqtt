@@ -1,6 +1,5 @@
 # Fritz!Box Callmonitor Phone Number RPC Scripts for Home Assistant
 # Add these scripts to your scripts.yaml or via the UI
-
 # Set/Update a contact name for a phone number
 fritz_set_phone_name:
   alias: "Fritz: Set Phone Name"
@@ -31,18 +30,22 @@ fritz_set_phone_name:
         retain: false
         payload: >
           {
+
+
+
+
             "id": "ha-set-{{ now().timestamp() | round(6) }}",
             "method": "set",
             "phone_number": "{{ phone_number }}",
             "name": "{{ contact_name }}",
             "timestamp": "{{ now().isoformat() }}Z"
           }
+
     - service: persistent_notification.create
       data:
         title: "📞 Fritz Phone Number"
         message: "Setting contact: {{ phone_number }} → {{ contact_name }}"
         notification_id: "fritz_set_phone_{{ phone_number | regex_replace('[^0-9]', '') }}"
-
 # Get contact information for a phone number
 fritz_get_phone_name:
   alias: "Fritz: Get Phone Name"
@@ -65,17 +68,21 @@ fritz_get_phone_name:
         retain: false
         payload: >
           {
+
+
+
+
             "id": "ha-get-{{ now().timestamp() | round(6) }}",
             "method": "get",
             "phone_number": "{{ phone_number }}",
             "timestamp": "{{ now().isoformat() }}Z"
           }
+
     - service: persistent_notification.create
       data:
         title: "📞 Fritz Phone Lookup"
         message: "Looking up contact for: {{ phone_number }}"
         notification_id: "fritz_get_phone_{{ phone_number | regex_replace('[^0-9]', '') }}"
-
 # Delete a contact from the database
 fritz_delete_phone_name:
   alias: "Fritz: Delete Phone Name"
@@ -107,17 +114,21 @@ fritz_delete_phone_name:
         retain: false
         payload: >
           {
+
+
+
+
             "id": "ha-delete-{{ now().timestamp() | round(6) }}",
             "method": "delete",
             "phone_number": "{{ phone_number }}",
             "timestamp": "{{ now().isoformat() }}Z"
           }
+
     - service: persistent_notification.create
       data:
         title: "📞 Fritz Phone Number"
         message: "Deleting contact: {{ phone_number }}"
         notification_id: "fritz_delete_phone_{{ phone_number | regex_replace('[^0-9]', '') }}"
-
 # List all stored phone numbers
 fritz_list_phone_numbers:
   alias: "Fritz: List Phone Numbers"
@@ -142,17 +153,21 @@ fritz_list_phone_numbers:
         retain: false
         payload: >
           {
+
+
+
+
             "id": "ha-list-{{ now().timestamp() | round(6) }}",
             "method": "list",
             "limit": {{ limit | default(50) }},
             "timestamp": "{{ now().isoformat() }}Z"
           }
+
     - service: persistent_notification.create
       data:
         title: "📞 Fritz Phone Numbers"
         message: "Retrieving up to {{ limit | default(50) }} phone numbers..."
         notification_id: "fritz_list_phones"
-
 # Search phone numbers by name pattern
 fritz_search_phone_numbers:
   alias: "Fritz: Search Phone Numbers"
@@ -184,18 +199,22 @@ fritz_search_phone_numbers:
         retain: false
         payload: >
           {
+
+
+
+
             "id": "ha-search-{{ now().timestamp() | round(6) }}",
             "method": "search",
             "pattern": "{{ search_pattern }}",
             "limit": {{ limit | default(20) }},
             "timestamp": "{{ now().isoformat() }}Z"
           }
+
     - service: persistent_notification.create
       data:
         title: "📞 Fritz Phone Search"
         message: "Searching for contacts matching: {{ search_pattern }}"
         notification_id: "fritz_search_phones"
-
 # Quick add from last unknown caller
 fritz_add_last_unknown_caller:
   alias: "Fritz: Add Last Unknown Caller"
@@ -214,12 +233,25 @@ fritz_add_last_unknown_caller:
         last_call: "{{ states.sensor.fritz_line_1_last_call.attributes }}"
         unknown_number: >
           {% if last_call.caller_name == null and last_call.caller != null %}
+
+
+
+
             {{ last_call.caller }}
           {% elif last_call.called_name == null and last_call.called != null %}
+
+
+
+
             {{ last_call.called }}
           {% else %}
+
+
+
+
             null
           {% endif %}
+
     - condition: template
       value_template: "{{ unknown_number != null }}"
       alias: "Check if unknown number exists"
@@ -232,7 +264,6 @@ fritz_add_last_unknown_caller:
         title: "📞 Unknown Caller Added"
         message: "Added {{ unknown_number }} as {{ contact_name }}"
         notification_id: "fritz_unknown_caller_added"
-
 # Import contacts from CSV-like format
 fritz_bulk_import_contacts:
   alias: "Fritz: Bulk Import Contacts"

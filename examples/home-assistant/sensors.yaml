@@ -1,6 +1,5 @@
 # Fritz!Box Callmonitor Phone Number RPC Sensors for Home Assistant
 # Add these to your sensor section in configuration.yaml
-
 template:
   - sensor:
       # Phone Number RPC Response Sensor
@@ -8,6 +7,10 @@ template:
         state_topic: "fritz/callmonitor/phone_number/response"
         value_template: >
           {% if value_json.success %}
+
+
+
+
             {% if value_json.phone_number %}
               found
             {% elif value_json.phone_numbers %}
@@ -16,11 +19,20 @@ template:
               success
             {% endif %}
           {% else %}
+
+
+
+
             error
           {% endif %}
+
         json_attributes_topic: "fritz/callmonitor/phone_number/response"
         json_attributes_template: >
           {
+
+
+
+
             "request_id": "{{ value_json.id }}",
             "success": {{ value_json.success | lower }},
             "error": "{{ value_json.error if value_json.error else '' }}",
@@ -30,8 +42,13 @@ template:
             "timestamp": "{{ value_json.timestamp }}",
             "response_time": "{{ now().isoformat() }}Z"
           }
+
         icon: >
           {% if value_json.success %}
+
+
+
+
             {% if value_json.phone_number %}
               mdi:phone-check
             {% elif value_json.phone_numbers %}
@@ -40,24 +57,40 @@ template:
               mdi:check-circle
             {% endif %}
           {% else %}
+
+
+
+
             mdi:alert-circle
           {% endif %}
+
         availability:
           - topic: "fritz/callmonitor/phone_number/response"
-
       # Phone Number Database Statistics
       - name: "Fritz Phone Database Stats"
         state_topic: "fritz/callmonitor/phone_number/response"
         value_template: >
           {% if value_json.success and value_json.phone_numbers %}
+
+
+
+
             {{ value_json.count | default(value_json.phone_numbers | length) }}
           {% else %}
+
+
+
+
             {{ states('sensor.fritz_phone_database_stats') | default('unknown') }}
           {% endif %}
+
         json_attributes_topic: "fritz/callmonitor/phone_number/response"
         json_attributes_template: >
-          {% if value_json.success and value_json.phone_numbers %}
-          {
+          {% if value_json.success and value_json.phone_numbers %} {
+
+
+
+
             "total_contacts": {{ value_json.count | default(value_json.phone_numbers | length) }},
             "last_updated": "{{ value_json.timestamp }}",
             "recent_contacts": {{ value_json.phone_numbers[:5] | tojson }},
@@ -65,85 +98,82 @@ template:
               "mobile": {{ value_json.phone_numbers | selectattr('phone_number', 'match', '.*01[567].*') | list | length }},
               "landline": {{ value_json.phone_numbers | rejectattr('phone_number', 'match', '.*01[567].*') | list | length }}
             }
-          }
-          {% else %}
-          {{ states.sensor.fritz_phone_database_stats.attributes | tojson }}
-          {% endif %}
+          } {% else %} {{ states.sensor.fritz_phone_database_stats.attributes | tojson }} {% endif %}
+
         unit_of_measurement: "contacts"
         icon: "mdi:phone-log"
         availability:
           - topic: "fritz/callmonitor/phone_number/response"
-
       # Last Unknown Caller Detection
       - name: "Fritz Last Unknown Caller"
         state_topic: "fritz/callmonitor/line/1/last_event"
         value_template: >
-          {% set call = value_json %}
-          {% if call.caller_name == null and call.caller %}
+          {% set call = value_json %} {% if call.caller_name == null and call.caller %}
+
+
+
+
             {{ call.caller }}
           {% elif call.called_name == null and call.called and call.direction == 'outbound' %}
+
+
+
+
             {{ call.called }}
           {% else %}
+
+
+
+
             none
           {% endif %}
+
         json_attributes_topic: "fritz/callmonitor/line/1/last_event"
-        json_attributes_template: >
-          {% set call = value_json %}
-          {% if call.caller_name == null and call.caller %}
-          {
-            "unknown_number": "{{ call.caller }}",
-            "direction": "{{ call.direction }}",
-            "timestamp": "{{ call.timestamp }}",
-            "call_type": "incoming",
-            "line": {{ call.line }},
-            "can_add_contact": true
-          }
-          {% elif call.called_name == null and call.called and call.direction == 'outbound' %}
-          {
-            "unknown_number": "{{ call.called }}",
-            "direction": "{{ call.direction }}",
-            "timestamp": "{{ call.timestamp }}",
-            "call_type": "outgoing", 
-            "line": {{ call.line }},
-            "can_add_contact": true
-          }
-          {% else %}
-          {
-            "unknown_number": null,
-            "can_add_contact": false
-          }
-          {% endif %}
+        json_attributes_template: "{% set call = value_json %} {% if call.caller_name == null and call.caller %} {\n  \"unknown_number\": \"{{ call.caller }}\",\n  \"direction\": \"{{ call.direction }}\",\n  \"timestamp\": \"{{ call.timestamp }}\",\n  \"call_type\": \"incoming\",\n  \"line\": {{ call.line }},\n  \"can_add_contact\": true\n} {% elif call.called_name == null and call.called and call.direction == 'outbound' %} {\n  \"unknown_number\": \"{{ call.called }}\",\n  \"direction\": \"{{ call.direction }}\",\n  \"timestamp\": \"{{ call.timestamp }}\",\n  \"call_type\": \"outgoing\", \n  \"line\": {{ call.line }},\n  \"can_add_contact\": true\n} {% else %} {\n  \"unknown_number\": null,\n  \"can_add_contact\": false\n} {% endif %}\n"
         icon: >
-          {% set call = value_json %}
-          {% if (call.caller_name == null and call.caller) or (call.called_name == null and call.called and call.direction == 'outbound') %}
+          {% set call = value_json %} {% if (call.caller_name == null and call.caller) or (call.called_name == null and call.called and call.direction == 'outbound') %}
+
+
+
+
             mdi:phone-alert
           {% else %}
+
+
+
+
             mdi:phone-check
           {% endif %}
+
         availability:
           - topic: "fritz/callmonitor/line/1/last_event"
-
       # Contact Resolution Rate
       - name: "Fritz Contact Resolution Rate"
         state_topic: "fritz/callmonitor/history"
         value_template: >
-          {% set calls = value_json.calls %}
-          {% if calls | length > 0 %}
+          {% set calls = value_json.calls %} {% if calls | length > 0 %}
+
+
+
+
             {% set resolved = calls | selectattr('caller_name', 'defined') | list | length + calls | selectattr('called_name', 'defined') | list | length %}
             {% set total = calls | length * 2 %}
             {{ ((resolved / total) * 100) | round(1) }}
           {% else %}
+
+
+
+
             0
           {% endif %}
+
         json_attributes_topic: "fritz/callmonitor/history"
         json_attributes_template: >
-          {% set calls = value_json.calls %}
-          {% if calls | length > 0 %}
-          {% set resolved_callers = calls | selectattr('caller_name', 'defined') | list | length %}
-          {% set resolved_called = calls | selectattr('called_name', 'defined') | list | length %}
-          {% set unknown_callers = calls | rejectattr('caller_name', 'defined') | map(attribute='caller') | list | unique %}
-          {% set unknown_called = calls | rejectattr('called_name', 'defined') | map(attribute='called') | list | unique %}
-          {
+          {% set calls = value_json.calls %} {% if calls | length > 0 %} {% set resolved_callers = calls | selectattr('caller_name', 'defined') | list | length %} {% set resolved_called = calls | selectattr('called_name', 'defined') | list | length %} {% set unknown_callers = calls | rejectattr('caller_name', 'defined') | map(attribute='caller') | list | unique %} {% set unknown_called = calls | rejectattr('called_name', 'defined') | map(attribute='called') | list | unique %} {
+
+
+
+
             "total_calls": {{ calls | length }},
             "resolved_callers": {{ resolved_callers }},
             "resolved_called": {{ resolved_called }},
@@ -151,20 +181,21 @@ template:
             "unknown_caller_numbers": {{ unknown_callers | tojson }},
             "unknown_called_numbers": {{ unknown_called | tojson }},
             "frequent_unknowns": {{ (unknown_callers + unknown_called) | list | tojson }}
-          }
-          {% else %}
-          {
+          } {% else %} {
+
+
+
+
             "total_calls": 0,
             "resolution_rate": 0,
             "unknown_caller_numbers": [],
             "unknown_called_numbers": []
-          }
-          {% endif %}
+          } {% endif %}
+
         unit_of_measurement: "%"
         icon: "mdi:percent"
         availability:
           - topic: "fritz/callmonitor/history"
-
 # Binary sensors for contact management
 binary_sensor:
   - platform: mqtt
@@ -175,18 +206,23 @@ binary_sensor:
     payload_off: "false"
     device_class: connectivity
     icon: "mdi:api"
-
   - platform: template
     sensors:
       fritz_has_unknown_caller:
         friendly_name: "Fritz Has Unknown Caller"
-        value_template: >
-          {{ states('sensor.fritz_last_unknown_caller') != 'none' and 
-             states('sensor.fritz_last_unknown_caller') != 'unknown' }}
+        value_template: "{{ states('sensor.fritz_last_unknown_caller') != 'none' and \n   states('sensor.fritz_last_unknown_caller') != 'unknown' }}\n"
         icon_template: >
           {% if is_state('binary_sensor.fritz_has_unknown_caller', 'on') %}
+
+
+
+
             mdi:phone-alert
           {% else %}
+
+
+
+
             mdi:phone-check
           {% endif %}
 
@@ -194,9 +230,18 @@ binary_sensor:
         friendly_name: "Fritz Low Contact Resolution"
         value_template: >
           {{ states('sensor.fritz_contact_resolution_rate') | float < 50 }}
-        icon_template: >
+
+        icon_template: >-
           {% if is_state('binary_sensor.fritz_low_contact_resolution', 'on') %}
+
+
+
+
             mdi:account-alert
           {% else %}
+
+
+
+
             mdi:account-check
           {% endif %}

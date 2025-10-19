@@ -1,47 +1,41 @@
 # yamllint configuration for fritz-callmonitor2mqtt
 # See https://yamllint.readthedocs.io/en/stable/configuration.html
-
 extends: default
-
 rules:
   # Allow longer lines for readability
   line-length:
-    max: 150  # Increased to handle example files
+    max: 150 # Increased to handle example files
     level: warning
-
   # Allow more flexible indentation for GitHub Actions
   indentation:
     spaces: 2
     indent-sequences: true
     check-multi-line-strings: false
-
   # Be less strict about comments
   comments:
     min-spaces-from-content: 1
-
   # Allow empty values in YAML (common in GitHub Actions)
   empty-values:
     forbid-in-block-mappings: false
     forbid-in-flow-mappings: false
-
   # Don't require document start markers
   document-start: disable
-
   # Allow trailing spaces in comments
   trailing-spaces:
     level: warning
-
   # Allow multiple spaces for alignment
   colons:
     max-spaces-before: 0
     max-spaces-after: -1
-
   # Allow brackets for GitHub Actions expressions
   brackets:
     max-spaces-inside: 1
     max-spaces-inside-empty: 0
-
   # Allow truthy values like 'on' in GitHub Actions
   truthy:
     allowed-values: ['true', 'false', 'on', 'off', 'yes', 'no']
     check-keys: false
+  # Allow more empty lines (yamlfmt default formatting)
+  empty-lines:
+    max: 3
+    level: warning

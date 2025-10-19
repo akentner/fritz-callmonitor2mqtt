@@ -1,5 +1,4 @@
 name: Cache Management
-
 on:
   schedule:
     # Clean up caches weekly on Sundays at 02:00 UTC
@@ -14,11 +13,9 @@ on:
         options:
           - clean
           - info
-
 permissions:
   contents: read
   actions: write
-
 jobs:
   cache-management:
     name: Manage Build Caches
@@ -26,7 +23,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
       - name: Cache cleanup
         if: github.event.inputs.cache_action == 'clean' || github.event_name == 'schedule'
         run: |
@@ -34,7 +30,6 @@ jobs:
           # Note: GitHub automatically removes caches older than 7 days
           # This is mainly for manual cleanup if needed
           echo "Cache cleanup completed"
-
       - name: Cache info
         if: github.event.inputs.cache_action == 'info'
         run: |

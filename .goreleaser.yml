@@ -2,16 +2,12 @@
 # See: https://goreleaser.com
 # yaml-language-server: $schema=https://goreleaser.com/static/schema.json
 version: 2
-
 project_name: fritz-callmonitor2mqtt
-
 dist: dist
-
 before:
   hooks:
     - go mod tidy
     - go generate ./...
-
 builds:
   - env:
       - CGO_ENABLED=0
@@ -34,7 +30,6 @@ builds:
       - -X main.commit={{ .Commit }}
       - -X main.date={{ .Date }}
     binary: fritz-callmonitor2mqtt
-
 archives:
   - formats:
       - tar.gz
@@ -47,16 +42,12 @@ archives:
       - README.md
       - LICENSE
       - config.env.example
-
 git:
   tag_sort: -version:refname
-
 checksum:
   name_template: "checksums.txt"
-
 snapshot:
   version_template: "{{ incpatch .Version }}-next"
-
 changelog:
   sort: asc
   use: github
@@ -75,7 +66,6 @@ changelog:
       order: 1
     - title: Others
       order: 999
-
 release:
   github:
     owner: akentner

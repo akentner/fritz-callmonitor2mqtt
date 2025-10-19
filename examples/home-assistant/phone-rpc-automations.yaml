@@ -1,6 +1,5 @@
 # Fritz!Box Callmonitor Phone Number RPC Automations for Home Assistant
 # Add these to your automations.yaml or via the UI
-
 # Process Phone Number RPC Responses
 - id: fritz_phone_rpc_response_handler
   alias: "Fritz: Handle Phone RPC Response"
@@ -12,14 +11,26 @@
     response: "{{ trigger.payload_json }}"
     method: >
       {% if response.phone_number %}
+
+
+
+
         get
       {% elif response.phone_numbers %}
+
+
+
+
         {% if response.id and 'search' in response.id %}
           search
         {% else %}
           list
         {% endif %}
       {% else %}
+
+
+
+
         {% if response.id %}
           {% if 'set' in response.id %}
             set
@@ -32,6 +43,7 @@
           unknown
         {% endif %}
       {% endif %}
+
   action:
     - choose:
         # Handle successful GET response
@@ -43,13 +55,9 @@
               data:
                 title: "📞 Contact Found"
                 message: >
-                  **{{ response.phone_number.phone_number }}**
-                  Name: {{ response.phone_number.name if response.phone_number.name else 'No name set' }}
-                  {% if response.phone_number.created_at %}
-                  Added: {{ response.phone_number.created_at | as_timestamp | timestamp_custom('%d.%m.%Y %H:%M') }}
-                  {% endif %}
-                notification_id: "fritz_rpc_{{ response.id }}"
+                  **{{ response.phone_number.phone_number }}** Name: {{ response.phone_number.name if response.phone_number.name else 'No name set' }} {% if response.phone_number.created_at %} Added: {{ response.phone_number.created_at | as_timestamp | timestamp_custom('%d.%m.%Y %H:%M') }} {% endif %}
 
+                notification_id: "fritz_rpc_{{ response.id }}"
         # Handle successful LIST/SEARCH response
         - conditions:
             - condition: template
@@ -59,16 +67,11 @@
               data:
                 title: >
                   📞 {{ 'Search Results' if 'search' in response.id else 'Phone Numbers' }}
-                message: >
-                  Found {{ response.count }} contact(s):
-                  {% for contact in response.phone_numbers[:10] %}
-                  • {{ contact.phone_number }}: {{ contact.name if contact.name else 'No name' }}
-                  {% endfor %}
-                  {% if response.phone_numbers | length > 10 %}
-                  ... and {{ response.phone_numbers | length - 10 }} more
-                  {% endif %}
-                notification_id: "fritz_rpc_{{ response.id }}"
 
+                message: >
+                  Found {{ response.count }} contact(s): {% for contact in response.phone_numbers[:10] %} • {{ contact.phone_number }}: {{ contact.name if contact.name else 'No name' }} {% endfor %} {% if response.phone_numbers | length > 10 %} ... and {{ response.phone_numbers | length - 10 }} more {% endif %}
+
+                notification_id: "fritz_rpc_{{ response.id }}"
         # Handle successful SET/DELETE response
         - conditions:
             - condition: template
@@ -78,12 +81,9 @@
               data:
                 title: >
                   ✅ {{ 'Contact Updated' if 'set' in response.id else 'Contact Deleted' if 'delete' in response.id else 'Operation Successful' }}
-                message: >
-                  {{ 'Contact has been updated successfully.' if 'set' in response.id else 
-                     'Contact has been deleted successfully.' if 'delete' in response.id else 
-                     'Operation completed successfully.' }}
-                notification_id: "fritz_rpc_{{ response.id }}"
 
+                message: "{{ 'Contact has been updated successfully.' if 'set' in response.id else \n   'Contact has been deleted successfully.' if 'delete' in response.id else \n   'Operation completed successfully.' }}\n"
+                notification_id: "fritz_rpc_{{ response.id }}"
         # Handle error response  
         - conditions:
             - condition: template
@@ -93,10 +93,9 @@
               data:
                 title: "❌ Phone RPC Error"
                 message: >
-                  **Error:** {{ response.error }}
-                  Request ID: {{ response.id }}
-                notification_id: "fritz_rpc_error_{{ response.id }}"
+                  **Error:** {{ response.error }} Request ID: {{ response.id }}
 
+                notification_id: "fritz_rpc_error_{{ response.id }}"
 # Auto-suggest adding frequently calling unknown numbers
 - id: fritz_suggest_frequent_unknown_callers
   alias: "Fritz: Suggest Adding Frequent Unknown Callers"
@@ -107,51 +106,61 @@
   condition:
     - condition: template
       value_template: >
-        {% set calls = trigger.to_state.attributes.calls %}
-        {% set recent_calls = calls | selectattr('timestamp', '>', (now() - timedelta(days=7)).isoformat()) | list %}
-        {% set unknown_numbers = [] %}
-        {% for call in recent_calls %}
+        {% set calls = trigger.to_state.attributes.calls %} {% set recent_calls = calls | selectattr('timestamp', '>', (now() - timedelta(days=7)).isoformat()) | list %} {% set unknown_numbers = [] %} {% for call in recent_calls %}
+
+
+
+
           {% if not call.caller_name and call.caller %}
             {% set unknown_numbers = unknown_numbers + [call.caller] %}
           {% endif %}
           {% if not call.called_name and call.called %}
             {% set unknown_numbers = unknown_numbers + [call.called] %}
           {% endif %}
-        {% endfor %}
-        {% set frequent_numbers = [] %}
-        {% for number in unknown_numbers | unique %}
+        {% endfor %} {% set frequent_numbers = [] %} {% for number in unknown_numbers | unique %}
+
+
+
+
           {% if unknown_numbers | select('equalto', number) | list | length >= 3 %}
             {% set frequent_numbers = frequent_numbers + [number] %}
           {% endif %}
-        {% endfor %}
-        {{ frequent_numbers | length > 0 }}
+        {% endfor %} {{ frequent_numbers | length > 0 }}
+
   action:
     - service: persistent_notification.create
       data:
         title: "📞 Frequent Unknown Callers"
         message: >
-          {% set calls = trigger.to_state.attributes.calls %}
-          {% set recent_calls = calls | selectattr('timestamp', '>', (now() - timedelta(days=7)).isoformat()) | list %}
-          {% set unknown_numbers = [] %}
-          {% for call in recent_calls %}
+          {% set calls = trigger.to_state.attributes.calls %} {% set recent_calls = calls | selectattr('timestamp', '>', (now() - timedelta(days=7)).isoformat()) | list %} {% set unknown_numbers = [] %} {% for call in recent_calls %}
+
+
+
+
             {% if not call.caller_name and call.caller %}
               {% set unknown_numbers = unknown_numbers + [call.caller] %}
             {% endif %}
             {% if not call.called_name and call.called %}
               {% set unknown_numbers = unknown_numbers + [call.called] %}
             {% endif %}
-          {% endfor %}
-          The following numbers have called frequently this week:
-          {% for number in unknown_numbers | unique %}
+          {% endfor %} The following numbers have called frequently this week: {% for number in unknown_numbers | unique %}
+
+
+
+
             {% set count = unknown_numbers | select('equalto', number) | list | length %}
             {% if count >= 3 %}
           • {{ number }} ({{ count }} times)
+
+
+
+
             {% endif %}
           {% endfor %}
-          
-          Consider adding contact names using the "Fritz: Set Phone Name" script.
-        notification_id: "fritz_frequent_unknowns"
 
+          Consider adding contact names using the "Fritz: Set Phone Name" script.
+
+        notification_id: "fritz_frequent_unknowns"
 # Automatically add contacts from caller ID for VIP numbers
 - id: fritz_auto_add_vip_callers
   alias: "Fritz: Auto-add VIP Callers"
@@ -161,22 +170,29 @@
       entity_id: sensor.fritz_line_1_last_call
   condition:
     - condition: template
-      value_template: >
-        {% set call = trigger.to_state.attributes %}
-        {% set vip_patterns = ['0800', '0900', '+49800', '+49900'] %}
-        {{ call.caller and not call.caller_name and 
-           vip_patterns | select('in', call.caller) | list | length > 0 }}
+      value_template: "{% set call = trigger.to_state.attributes %} {% set vip_patterns = ['0800', '0900', '+49800', '+49900'] %} {{ call.caller and not call.caller_name and \n   vip_patterns | select('in', call.caller) | list | length > 0 }}\n"
   action:
     - service: script.fritz_set_phone_name
       data:
         phone_number: "{{ trigger.to_state.attributes.caller }}"
         contact_name: >
-          {% set number = trigger.to_state.attributes.caller %}
-          {% if '0800' in number or '+49800' in number %}
+          {% set number = trigger.to_state.attributes.caller %} {% if '0800' in number or '+49800' in number %}
+
+
+
+
             Service Hotline ({{ number }})
           {% elif '0900' in number or '+49900' in number %}
+
+
+
+
             Premium Service ({{ number }})
           {% else %}
+
+
+
+
             Auto-detected ({{ number }})
           {% endif %}
 
@@ -188,7 +204,7 @@
     - platform: time
       at: "02:00:00"
     - platform: time
-      at: "02:01:00"  # Backup trigger
+      at: "02:01:00" # Backup trigger
   condition:
     - condition: time
       weekday:
@@ -205,12 +221,11 @@
       data:
         title: "🔧 Fritz Weekly Maintenance"
         message: >
-          Weekly contact database maintenance completed.
-          Check the phone database statistics sensor for current status.
-          
-          Tip: Review frequent unknown callers for potential new contacts.
-        notification_id: "fritz_weekly_maintenance"
+          Weekly contact database maintenance completed. Check the phone database statistics sensor for current status.
 
+          Tip: Review frequent unknown callers for potential new contacts.
+
+        notification_id: "fritz_weekly_maintenance"
 # Quick action: Add current unknown caller
 - id: fritz_quick_add_unknown_caller_action
   alias: "Fritz: Quick Add Unknown Caller Action"
@@ -232,7 +247,6 @@
       data:
         variables:
           contact_name: "{{ states('input_text.fritz_quick_contact_name') }}"
-
 # Enhanced incoming call notification with quick actions
 - id: fritz_enhanced_incoming_call_notification
   alias: "Fritz: Enhanced Incoming Call with Quick Actions"
@@ -245,43 +259,33 @@
     - condition: template
       value_template: >
         {{ states.sensor.fritz_line_1_last_call.attributes.caller is defined }}
+
   action:
     - variables:
         call: "{{ states.sensor.fritz_line_1_last_call.attributes }}"
         is_unknown: "{{ call.caller_name == null }}"
-    - service: notify.mobile_app_your_phone  # Replace with your device
+    - service: notify.mobile_app_your_phone # Replace with your device
       data:
         title: "📞 Incoming Call"
         message: >
           {% if is_unknown %}
+
+
+
+
             Unknown number {{ call.caller }} is calling
           {% else %}
+
+
+
+
             {{ call.caller_name }} ({{ call.caller }}) is calling
           {% endif %}
+
         data:
           tag: "fritz_incoming_call"
           group: "fritz_calls"
-          actions: >
-            {% if is_unknown %}
-            [
-              {
-                "action": "FRITZ_ADD_UNKNOWN_CALLER",
-                "title": "Add Contact"
-              },
-              {
-                "action": "FRITZ_BLOCK_NUMBER", 
-                "title": "Block Number"
-              }
-            ]
-            {% else %}
-            [
-              {
-                "action": "FRITZ_VIEW_CONTACT",
-                "title": "View Contact"
-              }
-            ]
-            {% endif %}
-
+          actions: "{% if is_unknown %} [\n  {\n    \"action\": \"FRITZ_ADD_UNKNOWN_CALLER\",\n    \"title\": \"Add Contact\"\n  },\n  {\n    \"action\": \"FRITZ_BLOCK_NUMBER\", \n    \"title\": \"Block Number\"\n  }\n] {% else %} [\n  {\n    \"action\": \"FRITZ_VIEW_CONTACT\",\n    \"title\": \"View Contact\"\n  }\n] {% endif %}\n"
 # Contact resolution rate monitoring
 - id: fritz_monitor_contact_resolution_rate
   alias: "Fritz: Monitor Contact Resolution Rate"
@@ -296,15 +300,16 @@
     - condition: template
       value_template: >
         {{ states('sensor.fritz_call_history') | int > 10 }}
+
   action:
     - service: persistent_notification.create
       data:
         title: "📊 Low Contact Resolution Rate"
         message: >
           Your contact resolution rate is {{ states('sensor.fritz_contact_resolution_rate') }}%.
-          
+
           Consider adding contact names for frequently calling numbers to improve caller identification.
-          
-          Recent unknown numbers:
-          {{ state_attr('sensor.fritz_contact_resolution_rate', 'frequent_unknowns')[:5] | join(', ') }}
+
+          Recent unknown numbers: {{ state_attr('sensor.fritz_contact_resolution_rate', 'frequent_unknowns')[:5] | join(', ') }}
+
         notification_id: "fritz_low_resolution_rate"

@@ -1,6 +1,5 @@
 # Fritz!Box Callmonitor Automations for Home Assistant
 # Add these to your automations.yaml or via the UI
-
 # Incoming call notification
 - id: fritz_incoming_call_notification
   alias: "Fritz Incoming Call Notification"
@@ -13,24 +12,26 @@
     - condition: template
       value_template: >
         {{ states.sensor.fritz_line_1_last_call.attributes.caller is defined }}
+
   action:
     - service: notify.fritz_call_notifications
       data:
         title: "📞 Incoming Call"
         message: >
-          {% set call = states.sensor.fritz_line_1_last_call.attributes %}
-          {% set caller = call.caller_name or call.caller or "Unknown" %}
-          {% set called = call.called_name or call.called %}
-          {% if call.caller_extension %}
+          {% set call = states.sensor.fritz_line_1_last_call.attributes %} {% set caller = call.caller_name or call.caller or "Unknown" %} {% set called = call.called_name or call.called %} {% if call.caller_extension %}
+
+
+
+
             {% set caller = call.caller_extension.name + " (" + call.caller_extension.type + " " + call.caller_extension.number + ")" %}
-          {% endif %}
-          {% if call.called_extension %}
+          {% endif %} {% if call.called_extension %}
+
+
+
+
             {% set called = call.called_extension.name + " (" + call.called_extension.type + " " + call.called_extension.number + ")" %}
-          {% endif %}
-          {{ caller }} is calling {{ called }}
-          {% if call.called_extension %}
-          📱 Extension: {{ call.called_extension.name }} ({{ call.called_extension.type }})
-          {% endif %}
+          {% endif %} {{ caller }} is calling {{ called }} {% if call.called_extension %} 📱 Extension: {{ call.called_extension.name }} ({{ call.called_extension.type }}) {% endif %}
+
         data:
           tag: "fritz_incoming_call"
           actions:
@@ -38,7 +39,6 @@
               title: "Answer"
             - action: "FRITZ_REJECT_CALL"
               title: "Reject"
-
 # Outgoing call notification
 - id: fritz_outgoing_call_notification
   alias: "Fritz Outgoing Call Notification"
@@ -51,27 +51,28 @@
     - condition: template
       value_template: >
         {{ states.sensor.fritz_line_1_last_call.attributes.called is defined }}
+
   action:
     - service: notify.fritz_call_notifications
       data:
         title: "📱 Outgoing Call"
         message: >
-          {% set call = states.sensor.fritz_line_1_last_call.attributes %}
-          {% set called = call.called_name or call.called or "Unknown" %}
-          {% set caller = call.caller_name or call.caller %}
-          {% if call.called_extension %}
+          {% set call = states.sensor.fritz_line_1_last_call.attributes %} {% set called = call.called_name or call.called or "Unknown" %} {% set caller = call.caller_name or call.caller %} {% if call.called_extension %}
+
+
+
+
             {% set called = call.called_extension.name + " (" + call.called_extension.type + " " + call.called_extension.number + ")" %}
-          {% endif %}
-          {% if call.caller_extension %}
+          {% endif %} {% if call.caller_extension %}
+
+
+
+
             {% set caller = call.caller_extension.name + " (" + call.caller_extension.type + " " + call.caller_extension.number + ")" %}
-          {% endif %}
-          {{ caller }} calling {{ called }}
-          {% if call.caller_extension %}
-          📱 From Extension: {{ call.caller_extension.name }} ({{ call.caller_extension.type }})
-          {% endif %}
+          {% endif %} {{ caller }} calling {{ called }} {% if call.caller_extension %} 📱 From Extension: {{ call.caller_extension.name }} ({{ call.caller_extension.type }}) {% endif %}
+
         data:
           tag: "fritz_outgoing_call"
-
 # TTS announcement for incoming calls (if caller name available)
 - id: fritz_announce_incoming_call
   alias: "Fritz Announce Incoming Call"
@@ -84,6 +85,10 @@
     - condition: template
       value_template: >
         {{ states.sensor.fritz_line_1_last_call.attributes.caller_name is defined
+
+
+
+
            and states.sensor.fritz_line_1_last_call.attributes.caller_name != null }}
     - condition: time
       after: '07:00:00'
@@ -93,15 +98,21 @@
       data:
         entity_id: media_player.living_room_speaker
         message: >
-          {% set call = states.sensor.fritz_line_1_last_call.attributes %}
-          {% set caller_name = call.caller_name %}
-          {% if call.called_extension %}
+          {% set call = states.sensor.fritz_line_1_last_call.attributes %} {% set caller_name = call.caller_name %} {% if call.called_extension %}
+
+
+
+
             Incoming call from {{ caller_name }} for {{ call.called_extension.name }}
           {% else %}
+
+
+
+
             Incoming call from {{ caller_name }}
           {% endif %}
-        language: 'en'  # Change to your preferred language
 
+        language: 'en' # Change to your preferred language
 # Log important calls to persistent notification
 - id: fritz_log_important_calls
   alias: "Fritz Log Important Calls"
@@ -112,34 +123,30 @@
   condition:
     - condition: template
       value_template: >
-        {% set important_contacts = ['Max Mustermann', 'Anna Schmidt', 'John Doe'] %}
-        {% set caller_name = trigger.to_state.attributes.caller_name %}
-        {% set called_name = trigger.to_state.attributes.called_name %}
-        {{ caller_name in important_contacts or called_name in important_contacts }}
+        {% set important_contacts = ['Max Mustermann', 'Anna Schmidt', 'John Doe'] %} {% set caller_name = trigger.to_state.attributes.caller_name %} {% set called_name = trigger.to_state.attributes.called_name %} {{ caller_name in important_contacts or called_name in important_contacts }}
+
   action:
     - service: persistent_notification.create
       data:
         title: "📞 Important Call"
         message: >
-          {% set call = trigger.to_state.attributes %}
-          {% set direction = "📞" if call.direction == "inbound" else "📱" %}
-          {% set caller = call.caller_name or call.caller %}
-          {% set called = call.called_name or call.called %}
-          {% if call.caller_extension %}
+          {% set call = trigger.to_state.attributes %} {% set direction = "📞" if call.direction == "inbound" else "📱" %} {% set caller = call.caller_name or call.caller %} {% set called = call.called_name or call.called %} {% if call.caller_extension %}
+
+
+
+
             {% set caller = call.caller_extension.name + " (" + call.caller_extension.type + ")" %}
-          {% endif %}
-          {% if call.called_extension %}
+          {% endif %} {% if call.called_extension %}
+
+
+
+
             {% set called = call.called_extension.name + " (" + call.called_extension.type + ")" %}
-          {% endif %}
-          {{ direction }} {{ caller }} → {{ called }}
+          {% endif %} {{ direction }} {{ caller }} → {{ called }}
 
-          Time: {{ call.timestamp | as_timestamp | timestamp_custom('%H:%M:%S') }}
-          Duration: {{ call.duration or 0 }} seconds
-          {% if call.caller_extension or call.called_extension %}
-          Extensions: {% if call.caller_extension %}{{ call.caller_extension.name }} ({{ call.caller_extension.number }}){% endif %}{% if call.caller_extension and call.called_extension %} → {% endif %}{% if call.called_extension %}{{ call.called_extension.name }} ({{ call.called_extension.number }}){% endif %}
-          {% endif %}
+          Time: {{ call.timestamp | as_timestamp | timestamp_custom('%H:%M:%S') }} Duration: {{ call.duration or 0 }} seconds {% if call.caller_extension or call.called_extension %} Extensions: {% if call.caller_extension %}{{ call.caller_extension.name }} ({{ call.caller_extension.number }}){% endif %}{% if call.caller_extension and call.called_extension %} → {% endif %}{% if call.called_extension %}{{ call.called_extension.name }} ({{ call.called_extension.number }}){% endif %} {% endif %}
+
         notification_id: "fritz_important_call_{{ call.id }}"
-
 # Auto-set caller name when unknown number calls frequently
 - id: fritz_auto_suggest_contact
   alias: "Fritz Auto Suggest Contact"
@@ -150,25 +157,18 @@
   condition:
     - condition: template
       value_template: >
-        {% set calls = trigger.to_state.attributes.calls %}
-        {% set recent_calls = calls | selectattr('timestamp', '>', (now() - timedelta(days=7)).isoformat()) | list %}
-        {% set unknown_callers = recent_calls | selectattr('caller_name', 'equalto', null) | map(attribute='caller') | list %}
-        {% set frequent_unknowns = unknown_callers | list | unique %}
-        {{ frequent_unknowns | select('in', unknown_callers) | list | length > 0 }}
+        {% set calls = trigger.to_state.attributes.calls %} {% set recent_calls = calls | selectattr('timestamp', '>', (now() - timedelta(days=7)).isoformat()) | list %} {% set unknown_callers = recent_calls | selectattr('caller_name', 'equalto', null) | map(attribute='caller') | list %} {% set frequent_unknowns = unknown_callers | list | unique %} {{ frequent_unknowns | select('in', unknown_callers) | list | length > 0 }}
+
   action:
     - service: persistent_notification.create
       data:
         title: "📞 Contact Suggestion"
         message: >
-          {% set calls = trigger.to_state.attributes.calls %}
-          {% set recent_calls = calls | selectattr('timestamp', '>', (now() - timedelta(days=7)).isoformat()) | list %}
-          {% set unknown_callers = recent_calls | selectattr('caller_name', 'equalto', null) | map(attribute='caller') | list %}
-          {% set frequent_number = unknown_callers | list | first %}
-          The number {{ frequent_number }} has called {{ unknown_callers | select('equalto', frequent_number) | list | length }} times this week.
+          {% set calls = trigger.to_state.attributes.calls %} {% set recent_calls = calls | selectattr('timestamp', '>', (now() - timedelta(days=7)).isoformat()) | list %} {% set unknown_callers = recent_calls | selectattr('caller_name', 'equalto', null) | map(attribute='caller') | list %} {% set frequent_number = unknown_callers | list | first %} The number {{ frequent_number }} has called {{ unknown_callers | select('equalto', frequent_number) | list | length }} times this week.
 
           Consider adding a contact name using the "Set Fritz Phone Name" script.
-        notification_id: "fritz_contact_suggestion"
 
+        notification_id: "fritz_contact_suggestion"
 # Clear call notifications when call ends
 - id: fritz_clear_call_notifications
   alias: "Fritz Clear Call Notifications"
@@ -188,7 +188,6 @@
         message: "clear_notification"
         data:
           tag: "fritz_outgoing_call"
-
 # Service status monitoring
 - id: fritz_service_status_alert
   alias: "Fritz Service Status Alert"
@@ -206,7 +205,6 @@
         data:
           tag: "fritz_service_offline"
           priority: high
-
 # Service restored notification
 - id: fritz_service_restored
   alias: "Fritz Service Restored"
@@ -219,6 +217,7 @@
     - condition: template
       value_template: >
         {{ trigger.from_state.state == 'offline' }}
+
   action:
     - service: notify.fritz_call_notifications
       data:
@@ -226,7 +225,6 @@
         message: "The Fritz!Box callmonitor service is back online and call monitoring has resumed."
         data:
           tag: "fritz_service_online"
-
 # Extension-specific call notifications
 - id: fritz_extension_call_notification
   alias: "Fritz Extension Call Notification"
@@ -236,30 +234,44 @@
       entity_id: sensor.fritz_line_1_last_call
   condition:
     - condition: template
-      value_template: >
-        {{ trigger.to_state.attributes.caller_extension is defined 
-           or trigger.to_state.attributes.called_extension is defined }}
+      value_template: "{{ trigger.to_state.attributes.caller_extension is defined \n   or trigger.to_state.attributes.called_extension is defined }}\n"
   action:
     - service: notify.fritz_call_notifications
       data:
         title: >
-          {% set call = trigger.to_state.attributes %}
-          {% if call.direction == 'inbound' %}
+          {% set call = trigger.to_state.attributes %} {% if call.direction == 'inbound' %}
+
+
+
+
             📞 Call for {{ call.called_extension.name if call.called_extension else 'Extension' }}
           {% else %}
+
+
+
+
             📱 Call from {{ call.caller_extension.name if call.caller_extension else 'Extension' }}
           {% endif %}
+
         message: >
-          {% set call = trigger.to_state.attributes %}
-          {% if call.direction == 'inbound' %}
+          {% set call = trigger.to_state.attributes %} {% if call.direction == 'inbound' %}
+
+
+
+
             {% set caller = call.caller_name or call.caller %}
             {% set extension = call.called_extension %}
             {{ caller }} is calling {{ extension.name }} ({{ extension.type }} {{ extension.number }})
           {% else %}
+
+
+
+
             {% set called = call.called_name or call.called %}
             {% set extension = call.caller_extension %}
             {{ extension.name }} ({{ extension.type }} {{ extension.number }}) is calling {{ called }}
           {% endif %}
+
         data:
           tag: "fritz_extension_call"
           group: >
@@ -274,17 +286,14 @@
       entity_id: sensor.fritz_line_1_last_call
   condition:
     - condition: template
-      value_template: >
-        {{ trigger.to_state.attributes.caller_extension is defined 
-           and trigger.to_state.attributes.called_extension is defined }}
+      value_template: "{{ trigger.to_state.attributes.caller_extension is defined \n   and trigger.to_state.attributes.called_extension is defined }}\n"
   action:
     - service: notify.fritz_call_notifications
       data:
         title: "🏠 Internal Call"
         message: >
-          {% set call = trigger.to_state.attributes %}
-          {{ call.caller_extension.name }} ({{ call.caller_extension.type }}) 
-          is calling {{ call.called_extension.name }} ({{ call.called_extension.type }})
+          {% set call = trigger.to_state.attributes %} {{ call.caller_extension.name }} ({{ call.caller_extension.type }})  is calling {{ call.called_extension.name }} ({{ call.called_extension.type }})
+
         data:
           tag: "fritz_internal_call"
           priority: low

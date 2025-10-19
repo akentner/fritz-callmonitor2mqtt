@@ -25,30 +25,28 @@ jobs:
         with:
           fetch-depth: 0
           fetch-tags: true
-      
       - name: Ensure tags are available
         run: |
           # Refresh all refs to make sure we have the latest tags
           git fetch origin --tags --force
-          
+
           echo "=== Debug Information ==="
           echo "Current HEAD commit:"
           git rev-parse HEAD
-          
+
           echo "All available tags:"
           git tag -l --sort=-version:refname | head -10
-          
+
           echo "Tags pointing to current commit:"
           git tag --points-at HEAD
-          
+
           echo "Trying to describe current commit:"
           git describe --tags HEAD || echo "Could not describe HEAD with tags"
-          
+
           echo "Git status:"
           git status --porcelain
-          
+
           echo "=== End Debug Information ==="
-      
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
@@ -57,7 +55,6 @@ jobs:
           cache-dependency-path: |
             go.sum
             test/integration/go.sum
-
       - name: Cache Go build cache
         uses: actions/cache@v4
         with:

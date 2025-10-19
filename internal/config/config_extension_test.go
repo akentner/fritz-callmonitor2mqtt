@@ -128,6 +128,7 @@ func TestPBXConfig_GetExtensionInfo(t *testing.T) {
 	info := pbx.GetExtensionInfo("610")
 	if info == nil {
 		t.Fatal("Expected extension info, got nil")
+		return
 	}
 
 	if info.Number != "610" || info.Name != "Büro" || info.Type != "DECT" {

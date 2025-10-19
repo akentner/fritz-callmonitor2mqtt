@@ -119,6 +119,7 @@ func TestExtensionMapping(t *testing.T) {
 	info := config.GetExtensionInfo("21")
 	if info == nil {
 		t.Fatal("Expected extension info for '21', got nil")
+		return
 	}
 	if info.Number != "21" {
 		t.Errorf("Expected Number '21', got '%s'", info.Number)
@@ -131,6 +132,7 @@ func TestExtensionMapping(t *testing.T) {
 	info = config.GetExtensionInfo("15")
 	if info == nil {
 		t.Fatal("Expected extension info for callmonitor number '15' (GUI 615), got nil")
+		return
 	}
 	if info.Number != "615" {
 		t.Errorf("Expected Number '615' (GUI number), got '%s'", info.Number)
@@ -146,6 +148,7 @@ func TestExtensionMapping(t *testing.T) {
 	info = config.GetExtensionInfo("40")
 	if info == nil {
 		t.Fatal("Expected extension info for callmonitor number '40' (Internal **600), got nil")
+		return
 	}
 	if info.Number != "**600" {
 		t.Errorf("Expected Number '**600' (Internal number), got '%s'", info.Number)

@@ -1,14 +1,11 @@
 name: Lint
-
 on:
   push:
-    branches: [ main, 1.1.x, develop ]
+    branches: [main, 1.1.x, develop]
   pull_request:
-    branches: [ main, 1.1.x ]
-
+    branches: [main, 1.1.x]
 permissions:
   contents: read
-
 jobs:
   lint:
     name: Lint Code
@@ -18,7 +15,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
@@ -27,7 +23,6 @@ jobs:
           cache-dependency-path: |
             go.sum
             test/integration/go.sum
-
       - name: Cache Go build cache
         uses: actions/cache@v4
         with:
@@ -39,10 +34,8 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}-
             ${{ runner.os }}-go-
-
       - name: Install Go dependencies
         run: go mod download
-
       - name: Install golangci-lint from source
         run: |
           if ! command -v golangci-lint &> /dev/null; then
@@ -51,16 +44,13 @@ jobs:
           else
             echo "golangci-lint already cached"
           fi
-
       - name: Run Go linter
         run: golangci-lint run --timeout=5m
-
       - name: Set up Python for yamllint
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: 'pip'
-
       - name: Cache Python packages
         uses: actions/cache@v4
         with:
@@ -71,13 +61,10 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-python-yamllint-
             ${{ runner.os }}-python-
-
       - name: Install yamllint
         run: pip install --user -r .github/requirements.txt
-
       - name: Run YAML linter
         run: yamllint .
-
       - name: Cache actionlint
         uses: actions/cache@v4
         with:
@@ -87,7 +74,6 @@ jobs:
           key: ${{ runner.os }}-actionlint-${{ hashFiles('.github/workflows/*.yml') }}
           restore-keys: |
             ${{ runner.os }}-actionlint-
-
       - name: Install actionlint
         run: |
           if ! command -v actionlint &> /dev/null; then
@@ -96,7 +82,6 @@ jobs:
           else
             echo "actionlint already cached"
           fi
-
       - name: Run GitHub Actions linter
         run: |
           if command -v actionlint &> /dev/null; then
