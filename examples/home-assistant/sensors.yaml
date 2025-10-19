@@ -11,6 +11,7 @@ template:
 
 
 
+
             {% if value_json.phone_number %}
               found
             {% elif value_json.phone_numbers %}
@@ -23,12 +24,14 @@ template:
 
 
 
+
             error
           {% endif %}
 
         json_attributes_topic: "fritz/callmonitor/phone_number/response"
         json_attributes_template: >
           {
+
 
 
 
@@ -49,6 +52,7 @@ template:
 
 
 
+
             {% if value_json.phone_number %}
               mdi:phone-check
             {% elif value_json.phone_numbers %}
@@ -57,6 +61,7 @@ template:
               mdi:check-circle
             {% endif %}
           {% else %}
+
 
 
 
@@ -75,8 +80,10 @@ template:
 
 
 
+
             {{ value_json.count | default(value_json.phone_numbers | length) }}
           {% else %}
+
 
 
 
@@ -87,6 +94,7 @@ template:
         json_attributes_topic: "fritz/callmonitor/phone_number/response"
         json_attributes_template: >
           {% if value_json.success and value_json.phone_numbers %} {
+
 
 
 
@@ -113,14 +121,17 @@ template:
 
 
 
+
             {{ call.caller }}
           {% elif call.called_name == null and call.called and call.direction == 'outbound' %}
 
 
 
 
+
             {{ call.called }}
           {% else %}
+
 
 
 
@@ -136,8 +147,10 @@ template:
 
 
 
+
             mdi:phone-alert
           {% else %}
+
 
 
 
@@ -156,10 +169,12 @@ template:
 
 
 
+
             {% set resolved = calls | selectattr('caller_name', 'defined') | list | length + calls | selectattr('called_name', 'defined') | list | length %}
             {% set total = calls | length * 2 %}
             {{ ((resolved / total) * 100) | round(1) }}
           {% else %}
+
 
 
 
@@ -174,6 +189,7 @@ template:
 
 
 
+
             "total_calls": {{ calls | length }},
             "resolved_callers": {{ resolved_callers }},
             "resolved_called": {{ resolved_called }},
@@ -182,6 +198,7 @@ template:
             "unknown_called_numbers": {{ unknown_called | tojson }},
             "frequent_unknowns": {{ (unknown_callers + unknown_called) | list | tojson }}
           } {% else %} {
+
 
 
 
@@ -217,8 +234,10 @@ binary_sensor:
 
 
 
+
             mdi:phone-alert
           {% else %}
+
 
 
 
@@ -237,8 +256,10 @@ binary_sensor:
 
 
 
+
             mdi:account-alert
           {% else %}
+
 
 
 

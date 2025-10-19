@@ -34,6 +34,7 @@ fritz_set_phone_name:
 
 
 
+
             "id": "ha-set-{{ now().timestamp() | round(6) }}",
             "method": "set",
             "phone_number": "{{ phone_number }}",
@@ -68,6 +69,7 @@ fritz_get_phone_name:
         retain: false
         payload: >
           {
+
 
 
 
@@ -118,6 +120,7 @@ fritz_delete_phone_name:
 
 
 
+
             "id": "ha-delete-{{ now().timestamp() | round(6) }}",
             "method": "delete",
             "phone_number": "{{ phone_number }}",
@@ -153,6 +156,7 @@ fritz_list_phone_numbers:
         retain: false
         payload: >
           {
+
 
 
 
@@ -203,6 +207,7 @@ fritz_search_phone_numbers:
 
 
 
+
             "id": "ha-search-{{ now().timestamp() | round(6) }}",
             "method": "search",
             "pattern": "{{ search_pattern }}",
@@ -237,14 +242,17 @@ fritz_add_last_unknown_caller:
 
 
 
+
             {{ last_call.caller }}
           {% elif last_call.called_name == null and last_call.called != null %}
 
 
 
 
+
             {{ last_call.called }}
           {% else %}
+
 
 
 

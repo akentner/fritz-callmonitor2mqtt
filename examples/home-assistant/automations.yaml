@@ -23,8 +23,10 @@
 
 
 
+
             {% set caller = call.caller_extension.name + " (" + call.caller_extension.type + " " + call.caller_extension.number + ")" %}
           {% endif %} {% if call.called_extension %}
+
 
 
 
@@ -62,8 +64,10 @@
 
 
 
+
             {% set called = call.called_extension.name + " (" + call.called_extension.type + " " + call.called_extension.number + ")" %}
           {% endif %} {% if call.caller_extension %}
+
 
 
 
@@ -89,6 +93,7 @@
 
 
 
+
            and states.sensor.fritz_line_1_last_call.attributes.caller_name != null }}
     - condition: time
       after: '07:00:00'
@@ -103,8 +108,10 @@
 
 
 
+
             Incoming call from {{ caller_name }} for {{ call.called_extension.name }}
           {% else %}
+
 
 
 
@@ -135,8 +142,10 @@
 
 
 
+
             {% set caller = call.caller_extension.name + " (" + call.caller_extension.type + ")" %}
           {% endif %} {% if call.called_extension %}
+
 
 
 
@@ -244,8 +253,10 @@
 
 
 
+
             📞 Call for {{ call.called_extension.name if call.called_extension else 'Extension' }}
           {% else %}
+
 
 
 
@@ -259,10 +270,12 @@
 
 
 
+
             {% set caller = call.caller_name or call.caller %}
             {% set extension = call.called_extension %}
             {{ caller }} is calling {{ extension.name }} ({{ extension.type }} {{ extension.number }})
           {% else %}
+
 
 
 
