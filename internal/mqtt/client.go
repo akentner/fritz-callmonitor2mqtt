@@ -201,6 +201,11 @@ func (c *Client) onConnect(client mqtt.Client) {
 		slog.Error("Failed to subscribe to phone number RPC topics", "error", err)
 	}
 
+	// Subscribe to republish RPC topics
+	if err := c.subscribeToRepublishRPC(); err != nil {
+		slog.Error("Failed to subscribe to republish RPC topics", "error", err)
+	}
+
 	// Load MSN call histories from database and publish them
 	if err := c.LoadMSNCallHistoriesFromDB(); err != nil {
 		slog.Error("Failed to load MSN call histories from database", "error", err)
@@ -1040,6 +1045,88 @@ func (c *Client) publishRPCError(requestID, errorMsg string) {
 	}
 }
 
+// subscribeToRepublishRPC subscribes to republish RPC topics
+func (c *Client) subscribeToRepublishRPC() error {
+	// Subscribe to republish RPC request topic
+	topic := fmt.Sprintf("%s/republish/request", c.topicPrefix)
+	slog.Info("Subscribing to republish RPC topic", "topic", topic)
+
+	if token := c.client.Subscribe(topic, c.qos, c.handleRepublishRPC); token.Wait() && token.Error() != nil {
+		return fmt.Errorf("failed to subscribe to republish RPC topic %s: %w", topic, token.Error())
+	}
+
+	slog.Info("Successfully subscribed to republish RPC topic", "topic", topic)
+	return nil
+}
+
+// handleRepublishRPC handles republish RPC requests
+func (c *Client) handleRepublishRPC(client mqtt.Client, msg mqtt.Message) {
+	slog.Info("Received republish RPC request",
+		"topic", msg.Topic(),
+		"payload", string(msg.Payload()))
+
+	// Parse RPC request
+	var request RepublishRPCRequest
+	if err := json.Unmarshal(msg.Payload(), &request); err != nil {
+		slog.Error("Failed to parse republish RPC request", "error", err)
+		c.publishRepublishRPCError("", fmt.Sprintf("Invalid JSON: %v", err))
+		return
+	}
+
+	// Validate request
+	if err := request.Validate(); err != nil {
+		slog.Error("Invalid republish RPC request", "error", err)
+		c.publishRepublishRPCError(request.ID, err.Error())
+		return
+	}
+
+	// Execute republish operation
+	c.mu.RLock()
+	lineStatusCount := len(c.lineStatuses)
+	c.mu.RUnlock()
+
+	if err := c.RepublishAllStates(); err != nil {
+		slog.Error("Failed to republish MQTT states", "error", err)
+		c.publishRepublishRPCError(request.ID, fmt.Sprintf("Republish failed: %v", err))
+		return
+	}
+
+	// Publish success response
+	response := NewRepublishSuccessResponse(request.ID, lineStatusCount)
+	if err := c.publishRepublishRPCResponse(*response); err != nil {
+		slog.Error("Failed to publish republish RPC response", "error", err)
+	}
+}
+
+// publishRepublishRPCResponse publishes a republish RPC response
+func (c *Client) publishRepublishRPCResponse(response RepublishRPCResponse) error {
+	topic := fmt.Sprintf("%s/republish/response", c.topicPrefix)
+
+	payload, err := json.Marshal(response)
+	if err != nil {
+		return fmt.Errorf("failed to marshal republish RPC response: %w", err)
+	}
+
+	slog.Info("Publishing republish RPC response",
+		"topic", topic,
+		"payload", string(payload))
+
+	if token := c.client.Publish(topic, c.qos, false, payload); token.Wait() && token.Error() != nil {
+		return fmt.Errorf("failed to publish republish RPC response: %w", token.Error())
+	}
+
+	return nil
+}
+
+// publishRepublishRPCError publishes a republish RPC error response
+func (c *Client) publishRepublishRPCError(requestID, errorMsg string) {
+	response := NewRepublishErrorResponse(requestID, errorMsg)
+
+	if err := c.publishRepublishRPCResponse(*response); err != nil {
+		slog.Error("Failed to publish republish RPC error response", "error", err)
+	}
+}
+
 // BootstrapFromDatabase loads current state from database and publishes initial MQTT messages
 func (c *Client) BootstrapFromDatabase() error {
 	slog.Info("Bootstrapping MQTT state from database...")
@@ -1193,6 +1280,35 @@ func (c *Client) publishNull(topic string) error {
 	if token.Wait() && token.Error() != nil {
 		return fmt.Errorf("failed to publish null message: %w", token.Error())
 	}
+
+	return nil
+}
+
+// RepublishAllStates republishes all current MQTT states (called after callmonitor reconnection)
+func (c *Client) RepublishAllStates() error {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if !c.connected {
+		return fmt.Errorf("MQTT client not connected")
+	}
+
+	slog.Info("Republishing all MQTT states after callmonitor reconnection...")
+
+	// Republish all line statuses
+	publishedCount := 0
+	for _, lineStatus := range c.lineStatuses {
+		if err := c.publishLineStatus(lineStatus); err != nil {
+			slog.Error("Failed to republish line status",
+				"line", lineStatus.Line,
+				"error", err)
+		} else {
+			publishedCount++
+		}
+	}
+
+	slog.Info("Republished MQTT states",
+		"line_statuses", publishedCount)
 
 	return nil
 }

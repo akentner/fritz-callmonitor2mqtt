@@ -3,18 +3,23 @@ package types
 import (
 	"fmt"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
 
 // MockMQTTPublisher implements MQTTPublisher for testing
 type MockMQTTPublisher struct {
+	mu               sync.RWMutex
 	PublishedChanges []LineStatusChangeMessage
 	ShouldError      bool
 	ErrorMessage     string
 }
 
 func (m *MockMQTTPublisher) PublishLineStatusChange(line int, oldStatus, newStatus CallStatus, event *CallEvent) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
 	if m.ShouldError {
 		return fmt.Errorf("%s", m.ErrorMessage)
 	}
@@ -46,9 +51,27 @@ func (m *MockMQTTPublisher) PublishTimeoutStatusUpdate(line int, newStatus CallS
 }
 
 func (m *MockMQTTPublisher) Reset() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.PublishedChanges = nil
 	m.ShouldError = false
 	m.ErrorMessage = ""
+}
+
+// GetPublishedCount returns the number of published messages (thread-safe)
+func (m *MockMQTTPublisher) GetPublishedCount() int {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return len(m.PublishedChanges)
+}
+
+// GetPublishedChanges returns a copy of published changes (thread-safe)
+func (m *MockMQTTPublisher) GetPublishedChanges() []LineStatusChangeMessage {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	result := make([]LineStatusChangeMessage, len(m.PublishedChanges))
+	copy(result, m.PublishedChanges)
+	return result
 }
 
 func TestCallStateMachineWithMQTT(t *testing.T) {
@@ -67,12 +90,14 @@ func TestCallStateMachineWithMQTT(t *testing.T) {
 	// Wait for async goroutine to complete
 	time.Sleep(50 * time.Millisecond)
 
-	if len(mockPublisher.PublishedChanges) != 1 {
-		t.Errorf("Expected 1 published change, got %d", len(mockPublisher.PublishedChanges))
+	publishedCount := mockPublisher.GetPublishedCount()
+	if publishedCount != 1 {
+		t.Errorf("Expected 1 published change, got %d", publishedCount)
 		return
 	}
 
-	change := mockPublisher.PublishedChanges[0]
+	changes := mockPublisher.GetPublishedChanges()
+	change := changes[0]
 	if change.Line != 1 {
 		t.Errorf("Expected line 1, got %d", change.Line)
 	}
@@ -99,18 +124,20 @@ func TestCallStateMachineWithMQTTTimeout(t *testing.T) {
 	fsm.ProcessEvent(CallTypeDisconnect) // Should go to finished
 
 	// Reset published changes to focus on timeout
-	mockPublisher.PublishedChanges = nil
+	mockPublisher.Reset()
 
 	// Wait for timeout
 	time.Sleep(1200 * time.Millisecond)
 
 	// Should have timeout transition published
-	if len(mockPublisher.PublishedChanges) == 0 {
+	publishedCount := mockPublisher.GetPublishedCount()
+	if publishedCount == 0 {
 		t.Error("Expected timeout transition to be published")
 		return
 	}
 
-	change := mockPublisher.PublishedChanges[len(mockPublisher.PublishedChanges)-1]
+	changes := mockPublisher.GetPublishedChanges()
+	change := changes[publishedCount-1]
 	if change.NewStatus != CallStatusIdle {
 		t.Errorf("Expected timeout transition to idle, got %s", change.NewStatus)
 	}
@@ -136,12 +163,14 @@ func TestCallStateMachineSetMQTTPublisher(t *testing.T) {
 	// Wait for async goroutine to complete
 	time.Sleep(50 * time.Millisecond)
 
-	if len(mockPublisher.PublishedChanges) != 1 {
-		t.Errorf("Expected 1 published change after setting publisher, got %d", len(mockPublisher.PublishedChanges))
+	publishedCount := mockPublisher.GetPublishedCount()
+	if publishedCount != 1 {
+		t.Errorf("Expected 1 published change after setting publisher, got %d", publishedCount)
 		return
 	}
 
-	change := mockPublisher.PublishedChanges[0]
+	changes := mockPublisher.GetPublishedChanges()
+	change := changes[0]
 	if change.Line != 2 {
 		t.Errorf("Expected line 2, got %d", change.Line)
 	}
@@ -165,12 +194,14 @@ func TestCallStateMachineProcessEventWithContext(t *testing.T) {
 	// Wait for async goroutine to complete
 	time.Sleep(50 * time.Millisecond)
 
-	if len(mockPublisher.PublishedChanges) != 1 {
-		t.Errorf("Expected 1 published change, got %d", len(mockPublisher.PublishedChanges))
+	publishedCount := mockPublisher.GetPublishedCount()
+	if publishedCount != 1 {
+		t.Errorf("Expected 1 published change, got %d", publishedCount)
 		return
 	}
 
-	change := mockPublisher.PublishedChanges[0]
+	changes := mockPublisher.GetPublishedChanges()
+	change := changes[0]
 	if change.Event == nil {
 		t.Error("Expected event to be included in status change")
 	} else if change.Event.Caller != event.Caller {
@@ -284,8 +315,9 @@ func TestLineStateMachineWithMQTT(t *testing.T) {
 	// Wait for async goroutine to complete
 	time.Sleep(50 * time.Millisecond)
 
-	if len(mockPublisher.PublishedChanges) != 1 {
-		t.Errorf("Expected 1 published change, got %d", len(mockPublisher.PublishedChanges))
+	publishedCount := mockPublisher.GetPublishedCount()
+	if publishedCount != 1 {
+		t.Errorf("Expected 1 published change, got %d", publishedCount)
 	}
 }
 
@@ -310,8 +342,9 @@ func TestLineStateMachineSetMQTTPublisher(t *testing.T) {
 	// Wait for async goroutine to complete
 	time.Sleep(50 * time.Millisecond)
 
-	if len(mockPublisher.PublishedChanges) != 1 {
-		t.Errorf("Expected 1 published change after setting publisher, got %d", len(mockPublisher.PublishedChanges))
+	publishedCount := mockPublisher.GetPublishedCount()
+	if publishedCount != 1 {
+		t.Errorf("Expected 1 published change after setting publisher, got %d", publishedCount)
 	}
 }
 

@@ -293,5 +293,27 @@ UPDATE calls SET status = 'voiceBox' WHERE status = 'messageBox';`,
 			DownSQL: `-- Rollback: Update voiceBox back to messageBox
 UPDATE calls SET status = 'messageBox' WHERE status = 'voiceBox';`,
 		},
+		{
+			Version:     10,
+			Name:        "add_events_table",
+			Description: "Add events table for storing raw callmonitor events",
+			UpSQL: `-- Table for storing raw callmonitor events
+CREATE TABLE IF NOT EXISTS events (
+    id TEXT PRIMARY KEY, -- UUID v7 as text
+    timestamp DATETIME NOT NULL,
+    raw_value TEXT NOT NULL, -- Raw event string from callmonitor
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Index for faster queries by timestamp
+CREATE INDEX IF NOT EXISTS idx_events_timestamp ON events(timestamp);
+
+-- Index for faster queries by created_at
+CREATE INDEX IF NOT EXISTS idx_events_created_at ON events(created_at);`,
+			DownSQL: `-- Remove events table and its indexes
+DROP INDEX IF EXISTS idx_events_created_at;
+DROP INDEX IF EXISTS idx_events_timestamp;
+DROP TABLE IF EXISTS events;`,
+		},
 	}
 }

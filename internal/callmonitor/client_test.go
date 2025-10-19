@@ -209,8 +209,11 @@ func TestCallLifecycleIDMapping(t *testing.T) {
 	}
 
 	// 4. Verify mapping was cleaned up
-	if len(client.lineIdToTrunk) != 0 {
-		t.Errorf("Expected callIDToLine map to be empty after disconnect, but has %d entries", len(client.lineIdToTrunk))
+	client.lineStatesMu.RLock()
+	lineStateCount := len(client.lineStates)
+	client.lineStatesMu.RUnlock()
+	if lineStateCount != 0 {
+		t.Errorf("Expected lineStates map to be empty after disconnect, but has %d entries", lineStateCount)
 	}
 }
 
@@ -298,8 +301,11 @@ func TestCallIDToLineIDMapping(t *testing.T) {
 	}
 
 	// Verify the mapping has been cleaned up after DISCONNECT
-	if len(client.lineIdToTrunk) != 0 {
-		t.Errorf("Expected callIDToLine map to be empty after DISCONNECT, but has %d entries", len(client.lineIdToTrunk))
+	client.lineStatesMu.RLock()
+	lineStateCount := len(client.lineStates)
+	client.lineStatesMu.RUnlock()
+	if lineStateCount != 0 {
+		t.Errorf("Expected lineStates map to be empty after DISCONNECT, but has %d entries", lineStateCount)
 	}
 }
 
@@ -320,8 +326,11 @@ func TestMultipleCallIDMappings(t *testing.T) {
 	}
 
 	// Verify both mappings are stored
-	if len(client.lineIdToTrunk) != 2 {
-		t.Errorf("Expected 2 mappings, got %d", len(client.lineIdToTrunk))
+	client.lineStatesMu.RLock()
+	lineStateCount := len(client.lineStates)
+	client.lineStatesMu.RUnlock()
+	if lineStateCount != 2 {
+		t.Errorf("Expected 2 line states, got %d", lineStateCount)
 	}
 
 	// End call 0
@@ -335,8 +344,11 @@ func TestMultipleCallIDMappings(t *testing.T) {
 	}
 
 	// Verify only one mapping remains
-	if len(client.lineIdToTrunk) != 1 {
-		t.Errorf("Expected 1 mapping after first DISCONNECT, got %d", len(client.lineIdToTrunk))
+	client.lineStatesMu.RLock()
+	lineStateCount = len(client.lineStates)
+	client.lineStatesMu.RUnlock()
+	if lineStateCount != 1 {
+		t.Errorf("Expected 1 line state after first DISCONNECT, got %d", lineStateCount)
 	}
 
 	// End call 1
@@ -350,8 +362,11 @@ func TestMultipleCallIDMappings(t *testing.T) {
 	}
 
 	// Verify all mappings are cleaned up
-	if len(client.lineIdToTrunk) != 0 {
-		t.Errorf("Expected 0 mappings after all DISCONNECTs, got %d", len(client.lineIdToTrunk))
+	client.lineStatesMu.RLock()
+	lineStateCount = len(client.lineStates)
+	client.lineStatesMu.RUnlock()
+	if lineStateCount != 0 {
+		t.Errorf("Expected 0 line states after all DISCONNECTs, got %d", lineStateCount)
 	}
 }
 
@@ -430,8 +445,11 @@ func TestCallIDTracking(t *testing.T) {
 	}
 
 	// Verify mapping was cleaned up after DISCONNECT
-	if len(client.lineIdToCallID) != 0 {
-		t.Errorf("Expected lineIdToCallID map to be empty after DISCONNECT, but has %d entries", len(client.lineIdToCallID))
+	client.lineStatesMu.RLock()
+	lineStateCount := len(client.lineStates)
+	client.lineStatesMu.RUnlock()
+	if lineStateCount != 0 {
+		t.Errorf("Expected lineStates map to be empty after DISCONNECT, but has %d entries", lineStateCount)
 	}
 }
 

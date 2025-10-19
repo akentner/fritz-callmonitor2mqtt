@@ -3,9 +3,11 @@ package callmonitor
 import (
 	"bufio"
 	"fmt"
+	"log/slog"
 	"net"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -23,6 +25,21 @@ type ExtensionLookup interface {
 	GetExtensionInfo(number string) *types.ExtensionInfo
 }
 
+// EventPersistence interface for storing raw events
+type EventPersistence interface {
+	InsertEvent(id uuid.UUID, timestamp time.Time, rawValue string) error
+}
+
+// lineState holds state information for a single line
+type lineState struct {
+	trunk     string
+	direction types.CallDirection
+	caller    string
+	called    string
+	callID    string
+	lastSeen  time.Time
+}
+
 // Client represents a FRITZ!Box callmonitor client
 type Client struct {
 	host              string
@@ -35,14 +52,13 @@ type Client struct {
 	timezone          *time.Location
 	countryCode       string
 	localAreaCode     string
-	msns              []string                    // Configured MSNs for detection
-	phoneNumberLookup PhoneNumberLookup           // Optional phone number name lookup
-	extensionLookup   ExtensionLookup             // Optional extension info lookup
-	lineIdToTrunk     map[int]string              // Maps line ID to Line Name
-	lineIdToDirection map[int]types.CallDirection // Maps line ID to Line Direction
-	lineIdToCaller    map[int]string              // Maps line ID to Caller
-	lineIdToCalled    map[int]string              // Maps line ID to Called
-	lineIdToCallID    map[int]string              // Maps line ID to Call UUID for tracking across states
+	msns              []string          // Configured MSNs for detection
+	phoneNumberLookup PhoneNumberLookup // Optional phone number name lookup
+	extensionLookup   ExtensionLookup   // Optional extension info lookup
+	eventPersistence  EventPersistence  // Optional raw event persistence
+	lineStates        map[int]*lineState
+	lineStatesMu      sync.RWMutex
+	cleanupTicker     *time.Ticker
 }
 
 // NewClient creates a new callmonitor client
@@ -51,20 +67,16 @@ func NewClient(host string, port int, timezone *time.Location, countryCode strin
 		timezone = time.Local
 	}
 	return &Client{
-		host:              host,
-		port:              port,
-		eventChan:         make(chan types.CallEvent, 100),
-		errorChan:         make(chan error, 10),
-		stopChan:          make(chan struct{}),
-		timezone:          timezone,
-		countryCode:       countryCode,
-		localAreaCode:     localAreaCode,
-		msns:              msns,
-		lineIdToTrunk:     make(map[int]string),
-		lineIdToDirection: make(map[int]types.CallDirection),
-		lineIdToCaller:    make(map[int]string),
-		lineIdToCalled:    make(map[int]string),
-		lineIdToCallID:    make(map[int]string),
+		host:          host,
+		port:          port,
+		eventChan:     make(chan types.CallEvent, 100),
+		errorChan:     make(chan error, 10),
+		stopChan:      make(chan struct{}),
+		timezone:      timezone,
+		countryCode:   countryCode,
+		localAreaCode: localAreaCode,
+		msns:          msns,
+		lineStates:    make(map[int]*lineState),
 	}
 }
 
@@ -76,6 +88,11 @@ func (c *Client) SetPhoneNumberLookup(lookup PhoneNumberLookup) {
 // SetExtensionLookup sets the extension lookup interface
 func (c *Client) SetExtensionLookup(lookup ExtensionLookup) {
 	c.extensionLookup = lookup
+}
+
+// SetEventPersistence sets the event persistence interface
+func (c *Client) SetEventPersistence(persistence EventPersistence) {
+	c.eventPersistence = persistence
 }
 
 // Connect establishes connection to FRITZ!Box callmonitor
@@ -94,6 +111,9 @@ func (c *Client) Connect() error {
 	// Start reading in background
 	go c.readLoop()
 
+	// Start cleanup routine for stale line states
+	c.startCleanupRoutine()
+
 	return nil
 }
 
@@ -104,6 +124,9 @@ func (c *Client) Disconnect() error {
 	}
 
 	c.connected = false
+
+	// Stop cleanup ticker
+	c.stopCleanupRoutine()
 
 	// Close stop channel safely
 	select {
@@ -196,6 +219,21 @@ func (c *Client) parseEvent(rawMessage string) (*types.CallEvent, error) {
 		timestamp = time.Now() // Fallback to current time
 	}
 
+	// Generate UUID v7 for this raw event
+	eventUUID, err := uuid.NewV7()
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate UUID v7 for event: %w", err)
+	}
+
+	// Persist raw event to database if persistence is configured
+	if c.eventPersistence != nil {
+		if err := c.eventPersistence.InsertEvent(eventUUID, timestamp, rawMessage); err != nil {
+			// Log error but don't fail event processing
+			// The error will be visible in the application logs
+			_ = err // We could add proper logging here
+		}
+	}
+
 	// Parse call type and delegate to specific parser
 	callTypeStr := strings.ToUpper(parts[1])
 
@@ -251,14 +289,15 @@ func (c *Client) parseEventRing(parts []string, timestamp time.Time, lineID int,
 	// Enrich with phone number names
 	c.enrichEventWithNames(event)
 
-	// Store mapping for later DISCONNECT events
+	// Store state for later events
+	state := c.getOrCreateLineState(event.Line)
 	if event.Trunk != "" {
-		c.lineIdToTrunk[event.Line] = event.Trunk
+		state.trunk = event.Trunk
 	}
-	c.lineIdToDirection[event.Line] = event.Direction
-	c.lineIdToCaller[event.Line] = event.Caller
-	c.lineIdToCalled[event.Line] = event.Called
-	c.lineIdToCallID[event.Line] = event.ID
+	state.direction = event.Direction
+	state.caller = event.Caller
+	state.called = event.Called
+	state.callID = event.ID
 
 	return event, nil
 }
@@ -297,14 +336,15 @@ func (c *Client) parseEventCall(parts []string, timestamp time.Time, line int, r
 	// Enrich with phone number names
 	c.enrichEventWithNames(event)
 
-	// Store mapping for later DISCONNECT events
+	// Store state for later events
+	state := c.getOrCreateLineState(event.Line)
 	if event.Trunk != "" {
-		c.lineIdToTrunk[event.Line] = event.Trunk
+		state.trunk = event.Trunk
 	}
-	c.lineIdToDirection[event.Line] = event.Direction
-	c.lineIdToCaller[event.Line] = event.Caller
-	c.lineIdToCalled[event.Line] = event.Called
-	c.lineIdToCallID[event.Line] = event.ID
+	state.direction = event.Direction
+	state.caller = event.Caller
+	state.called = event.Called
+	state.callID = event.ID
 
 	return event, nil
 }
@@ -326,28 +366,13 @@ func (c *Client) parseEventConnect(parts []string, timestamp time.Time, line int
 		RawMessage: rawMessage,
 	}
 
-	// Look up stored call ID from RING/CALL event
-	if callID, exists := c.lineIdToCallID[event.Line]; exists {
-		event.ID = callID
-	}
-
-	// Look up stored line ID from RING/CALL event
-	if trunk, exists := c.lineIdToTrunk[event.Line]; exists {
-		event.Trunk = trunk
-	}
-
-	// Look up stored call direction from RING/CALL event
-	if direction, exists := c.lineIdToDirection[event.Line]; exists {
-		event.Direction = direction
-	}
-
-	// Look up stored caller and called numbers from RING/CALL event
-	if caller, exists := c.lineIdToCaller[event.Line]; exists {
-		event.Caller = caller
-	}
-
-	if called, exists := c.lineIdToCalled[event.Line]; exists {
-		event.Called = called
+	// Look up stored state from RING/CALL event
+	if state := c.getLineState(event.Line); state != nil {
+		event.ID = state.callID
+		event.Trunk = state.trunk
+		event.Direction = state.direction
+		event.Caller = state.caller
+		event.Called = state.called
 	}
 
 	// Enrich with MSN information
@@ -375,8 +400,8 @@ func (c *Client) parseEventDisconnect(parts []string, timestamp time.Time, line 
 	}
 
 	// Look up stored call ID from RING/CALL event
-	if callID, exists := c.lineIdToCallID[event.Line]; exists {
-		event.ID = callID
+	if state := c.getLineState(event.Line); state != nil {
+		event.ID = state.callID
 	}
 
 	// parse duration
@@ -409,32 +434,17 @@ func (c *Client) parseEventDisconnect(parts []string, timestamp time.Time, line 
 		}
 	}
 
-	// Look up and clean up the stored line ID mapping
-	if trunk, exists := c.lineIdToTrunk[event.Line]; exists {
-		event.Trunk = trunk
-		delete(c.lineIdToTrunk, event.Line)
+	// Look up and clean up the stored state
+	if state := c.getLineState(event.Line); state != nil {
+		event.ID = state.callID
+		event.Trunk = state.trunk
+		event.Direction = state.direction
+		event.Caller = state.caller
+		event.Called = state.called
 	}
 
-	// Look up and clean up the stored call direction
-	if direction, exists := c.lineIdToDirection[event.Line]; exists {
-		event.Direction = direction
-		delete(c.lineIdToDirection, event.Line)
-	}
-
-	// Look up and clean up the stored caller
-	if caller, exists := c.lineIdToCaller[event.Line]; exists {
-		event.Caller = caller
-		delete(c.lineIdToCaller, event.Line)
-	}
-
-	// Look up and clean up the stored called
-	if called, exists := c.lineIdToCalled[event.Line]; exists {
-		event.Called = called
-		delete(c.lineIdToCalled, event.Line)
-	}
-
-	// Clean up the stored call ID
-	delete(c.lineIdToCallID, event.Line)
+	// Clean up line state after DISCONNECT
+	c.deleteLineState(event.Line)
 
 	// Enrich with MSN information
 	event.EnrichWithMSNs(c.msns)
@@ -604,4 +614,92 @@ func (c *Client) isExtensionNumber(number string) bool {
 	}
 
 	return false
+}
+
+// startCleanupRoutine starts a background goroutine to clean up stale line states
+func (c *Client) startCleanupRoutine() {
+	// Stop existing ticker if running
+	c.stopCleanupRoutine()
+
+	// Create new ticker that runs every 5 minutes
+	c.cleanupTicker = time.NewTicker(5 * time.Minute)
+
+	go func() {
+		for {
+			select {
+			case <-c.cleanupTicker.C:
+				c.cleanupStaleLineStates()
+			case <-c.stopChan:
+				return
+			}
+		}
+	}()
+
+	slog.Debug("Callmonitor cleanup routine started")
+}
+
+// stopCleanupRoutine stops the cleanup ticker
+func (c *Client) stopCleanupRoutine() {
+	if c.cleanupTicker != nil {
+		c.cleanupTicker.Stop()
+		c.cleanupTicker = nil
+		slog.Debug("Callmonitor cleanup routine stopped")
+	}
+}
+
+// cleanupStaleLineStates removes line states that haven't been updated in a while
+func (c *Client) cleanupStaleLineStates() {
+	c.lineStatesMu.Lock()
+	defer c.lineStatesMu.Unlock()
+
+	// Consider states stale after 1 hour of inactivity
+	staleTimeout := 1 * time.Hour
+	now := time.Now()
+
+	cleanedCount := 0
+	for line, state := range c.lineStates {
+		if now.Sub(state.lastSeen) > staleTimeout {
+			delete(c.lineStates, line)
+			cleanedCount++
+			slog.Debug("Cleaned up stale line state",
+				"line", line,
+				"last_seen", state.lastSeen.Format(time.RFC3339))
+		}
+	}
+
+	if cleanedCount > 0 {
+		slog.Info("Cleaned up stale line states",
+			"cleaned_count", cleanedCount,
+			"remaining", len(c.lineStates))
+	}
+}
+
+// getOrCreateLineState retrieves or creates a line state for the given line
+func (c *Client) getOrCreateLineState(line int) *lineState {
+	c.lineStatesMu.Lock()
+	defer c.lineStatesMu.Unlock()
+
+	state, exists := c.lineStates[line]
+	if !exists {
+		state = &lineState{
+			lastSeen: time.Now(),
+		}
+		c.lineStates[line] = state
+	}
+	state.lastSeen = time.Now()
+	return state
+}
+
+// getLineState retrieves a line state (read-only)
+func (c *Client) getLineState(line int) *lineState {
+	c.lineStatesMu.RLock()
+	defer c.lineStatesMu.RUnlock()
+	return c.lineStates[line]
+}
+
+// deleteLineState removes a line state
+func (c *Client) deleteLineState(line int) {
+	c.lineStatesMu.Lock()
+	defer c.lineStatesMu.Unlock()
+	delete(c.lineStates, line)
 }

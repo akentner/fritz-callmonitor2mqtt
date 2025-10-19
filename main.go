@@ -133,6 +133,9 @@ func main() {
 	// Set extension lookup in callmonitor client
 	callmonitorClient.SetExtensionLookup(&cfg.PBX)
 
+	// Set event persistence in callmonitor client
+	callmonitorClient.SetEventPersistence(dbClient)
+
 	// Initialize call manager with MQTT and database integration
 	callManager := types.NewCallManagerWithMQTTAndDB(mqttClient, dbClient, func(line int, oldStatus, newStatus types.CallStatus, event *types.CallEvent) {
 		slog.Debug("Line status changed",
@@ -219,6 +222,11 @@ func (app *Application) Run() error {
 		}
 
 		slog.Info("Connected to FRITZ!Box callmonitor")
+
+		// Republish all MQTT states to ensure sync after reconnection
+		if err := app.mqttClient.RepublishAllStates(); err != nil {
+			slog.Warn("Failed to republish MQTT states after callmonitor reconnection", "error", err)
+		}
 
 		// Process events until connection is lost
 		if err := app.processEvents(); err != nil {

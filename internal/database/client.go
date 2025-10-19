@@ -696,7 +696,7 @@ func (c *Client) SearchPhoneNumbersByName(namePattern string, limit int) ([]Phon
 		return nil, fmt.Errorf("database not connected")
 	}
 
-	query := `SELECT phone_number, name, created_at, updated_at FROM phone_numbers 
+	query := `SELECT phone_number, name, created_at, updated_at FROM phone_numbers
 		WHERE name LIKE ? ORDER BY name ASC LIMIT ?`
 
 	pattern := "%" + namePattern + "%"
@@ -723,4 +723,108 @@ func (c *Client) SearchPhoneNumbersByName(namePattern string, limit int) ([]Phon
 	}
 
 	return phoneNumbers, nil
+}
+
+// Event represents a raw callmonitor event record
+type Event struct {
+	ID        uuid.UUID `db:"id"`
+	Timestamp time.Time `db:"timestamp"`
+	RawValue  string    `db:"raw_value"`
+	CreatedAt time.Time `db:"created_at"`
+}
+
+// InsertEvent inserts a new raw event record
+func (c *Client) InsertEvent(id uuid.UUID, timestamp time.Time, rawValue string) error {
+	if c.db == nil {
+		return fmt.Errorf("database not connected")
+	}
+
+	// Convert UUID to string for storage
+	idString := id.String()
+
+	query := `INSERT INTO events (id, timestamp, raw_value) VALUES (?, ?, ?)`
+
+	_, err := c.db.Exec(query, idString, timestamp, rawValue)
+	if err != nil {
+		return fmt.Errorf("failed to insert event: %w", err)
+	}
+
+	return nil
+}
+
+// GetEvent retrieves an event record by UUID
+func (c *Client) GetEvent(id uuid.UUID) (*Event, error) {
+	if c.db == nil {
+		return nil, fmt.Errorf("database not connected")
+	}
+
+	idString := id.String()
+
+	query := `SELECT id, timestamp, raw_value, created_at FROM events WHERE id = ?`
+
+	row := c.db.QueryRow(query, idString)
+
+	var event Event
+	var idStr string
+
+	err := row.Scan(&idStr, &event.Timestamp, &event.RawValue, &event.CreatedAt)
+
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, fmt.Errorf("event not found: %s", id.String())
+		}
+		return nil, fmt.Errorf("failed to scan event: %w", err)
+	}
+
+	// Convert string back to UUID
+	parsedUUID, err := uuid.Parse(idStr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse UUID: %w", err)
+	}
+	event.ID = parsedUUID
+
+	return &event, nil
+}
+
+// GetRecentEvents retrieves the most recent events, ordered by timestamp DESC
+func (c *Client) GetRecentEvents(limit int) ([]Event, error) {
+	if c.db == nil {
+		return nil, fmt.Errorf("database not connected")
+	}
+
+	query := `SELECT id, timestamp, raw_value, created_at FROM events
+		ORDER BY timestamp DESC LIMIT ?`
+
+	rows, err := c.db.Query(query, limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query events: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	var events []Event
+	for rows.Next() {
+		var event Event
+		var idStr string
+
+		err := rows.Scan(&idStr, &event.Timestamp, &event.RawValue, &event.CreatedAt)
+
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan event: %w", err)
+		}
+
+		// Convert string back to UUID
+		parsedUUID, err := uuid.Parse(idStr)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse UUID: %w", err)
+		}
+		event.ID = parsedUUID
+
+		events = append(events, event)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating events: %w", err)
+	}
+
+	return events, nil
 }

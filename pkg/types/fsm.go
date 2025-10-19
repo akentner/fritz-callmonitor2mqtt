@@ -17,48 +17,60 @@ type DatabasePersister interface {
 
 // CallStateMachine manages the state transitions for call events
 type CallStateMachine struct {
-	mu            sync.RWMutex
-	currentState  CallStatus
-	finishState   *CallStatus // Last meaningful state before idle
-	callID        *uuid.UUID  // UUID for current call session
-	timeoutTimer  *time.Timer
-	timeoutCtx    context.Context
-	timeoutCancel context.CancelFunc
-	onStateChange func(oldState, newState CallStatus)
-	mqttPublisher MQTTPublisher
-	dbPersister   DatabasePersister
-	line          int
-	lastEvent     *CallEvent
-	lastEventType CallType
-	lastEventTime time.Time
+	mu             sync.RWMutex
+	currentState   CallStatus
+	finishState    *CallStatus // Last meaningful state before idle
+	callID         *uuid.UUID  // UUID for current call session
+	timeoutTimer   *time.Timer
+	timeoutCtx     context.Context
+	timeoutCancel  context.CancelFunc
+	onStateChange  func(oldState, newState CallStatus)
+	mqttPublisher  MQTTPublisher
+	dbPersister    DatabasePersister
+	line           int
+	lastEvent      *CallEvent
+	lastEventType  CallType
+	lastEventTime  time.Time
+	wg             sync.WaitGroup
+	shutdownCtx    context.Context
+	shutdownCancel context.CancelFunc
 }
 
 // NewCallStateMachine creates a new finite state machine for call status
 func NewCallStateMachine(onStateChange func(oldState, newState CallStatus)) *CallStateMachine {
+	ctx, cancel := context.WithCancel(context.Background())
 	return &CallStateMachine{
-		currentState:  CallStatusIdle,
-		onStateChange: onStateChange,
+		currentState:   CallStatusIdle,
+		onStateChange:  onStateChange,
+		shutdownCtx:    ctx,
+		shutdownCancel: cancel,
 	}
 }
 
 // NewCallStateMachineWithMQTT creates a new FSM with MQTT publishing support
 func NewCallStateMachineWithMQTT(line int, mqttPublisher MQTTPublisher, onStateChange func(oldState, newState CallStatus)) *CallStateMachine {
+	ctx, cancel := context.WithCancel(context.Background())
 	return &CallStateMachine{
-		currentState:  CallStatusIdle,
-		onStateChange: onStateChange,
-		mqttPublisher: mqttPublisher,
-		line:          line,
+		currentState:   CallStatusIdle,
+		onStateChange:  onStateChange,
+		mqttPublisher:  mqttPublisher,
+		line:           line,
+		shutdownCtx:    ctx,
+		shutdownCancel: cancel,
 	}
 }
 
 // NewCallStateMachineWithMQTTAndDB creates a new FSM with MQTT and database persistence support
 func NewCallStateMachineWithMQTTAndDB(line int, mqttPublisher MQTTPublisher, dbPersister DatabasePersister, onStateChange func(oldState, newState CallStatus)) *CallStateMachine {
+	ctx, cancel := context.WithCancel(context.Background())
 	return &CallStateMachine{
-		currentState:  CallStatusIdle,
-		onStateChange: onStateChange,
-		mqttPublisher: mqttPublisher,
-		dbPersister:   dbPersister,
-		line:          line,
+		currentState:   CallStatusIdle,
+		onStateChange:  onStateChange,
+		mqttPublisher:  mqttPublisher,
+		dbPersister:    dbPersister,
+		line:           line,
+		shutdownCtx:    ctx,
+		shutdownCancel: cancel,
 	}
 }
 
@@ -105,8 +117,18 @@ func (fsm *CallStateMachine) processEventInternal(eventType CallType, event *Cal
 		// Publish MQTT status change
 		if fsm.mqttPublisher != nil {
 			// Use goroutine for non-blocking operation in production
-			// For tests, MockMQTTPublisher will handle synchronously
+			// WaitGroup ensures proper shutdown synchronization
+			fsm.wg.Add(1)
 			go func(line int, old, new CallStatus, evt *CallEvent, timeout bool) {
+				defer fsm.wg.Done()
+
+				// Check if shutdown is in progress
+				select {
+				case <-fsm.shutdownCtx.Done():
+					return
+				default:
+				}
+
 				var publishEvent *CallEvent
 				if !timeout {
 					publishEvent = evt
@@ -255,6 +277,7 @@ func (fsm *CallStateMachine) setState(newState CallStatus) {
 }
 
 // handleTimeouts sets up timeout transitions for states that need them
+// Must be called with fsm.mu held
 func (fsm *CallStateMachine) handleTimeouts(state CallStatus) {
 	switch state {
 	case CallStatusNotReached, CallStatusMissedCall, CallStatusFinished, CallStatusVoiceBox:
@@ -263,6 +286,7 @@ func (fsm *CallStateMachine) handleTimeouts(state CallStatus) {
 }
 
 // startTimeout starts a timeout that will transition to idle state
+// Must be called with fsm.mu held
 func (fsm *CallStateMachine) startTimeout(duration time.Duration) {
 	fsm.timeoutCtx, fsm.timeoutCancel = context.WithCancel(context.Background())
 
@@ -291,7 +315,17 @@ func (fsm *CallStateMachine) executeTimeoutTransition() {
 
 		// Publish MQTT timeout transition (nil event indicates timeout)
 		if fsm.mqttPublisher != nil {
+			fsm.wg.Add(1)
 			go func(line int, old CallStatus) {
+				defer fsm.wg.Done()
+
+				// Check if shutdown is in progress
+				select {
+				case <-fsm.shutdownCtx.Done():
+					return
+				default:
+				}
+
 				if err := fsm.mqttPublisher.PublishLineStatusChange(line, old, CallStatusFinished, nil); err != nil {
 					// Ignore error for timeout transitions
 					_ = err // Explicitly ignore error for timeout
@@ -317,7 +351,17 @@ func (fsm *CallStateMachine) executeTimeoutTransition() {
 
 		// Publish MQTT timeout transition (nil event indicates timeout)
 		if fsm.mqttPublisher != nil {
+			fsm.wg.Add(1)
 			go func(line int, old CallStatus) {
+				defer fsm.wg.Done()
+
+				// Check if shutdown is in progress
+				select {
+				case <-fsm.shutdownCtx.Done():
+					return
+				default:
+				}
+
 				if err := fsm.mqttPublisher.PublishLineStatusChange(line, old, CallStatusIdle, nil); err != nil {
 					// Ignore error for timeout transitions
 					_ = err // Explicitly ignore error for timeout
@@ -334,6 +378,7 @@ func (fsm *CallStateMachine) executeTimeoutTransition() {
 }
 
 // cancelTimeout cancels any active timeout
+// Must be called with fsm.mu held
 func (fsm *CallStateMachine) cancelTimeout() {
 	if fsm.timeoutTimer != nil {
 		fsm.timeoutTimer.Stop()
@@ -446,6 +491,10 @@ func (fsm *CallStateMachine) getValidTransitionsUnsafe() []CallType {
 // Cleanup should be called when the FSM is no longer needed
 func (fsm *CallStateMachine) Cleanup() {
 	fsm.mu.Lock()
-	defer fsm.mu.Unlock()
+	fsm.shutdownCancel() // Signal all goroutines to stop
 	fsm.cancelTimeout()
+	fsm.mu.Unlock()
+
+	// Wait for all publishing goroutines to finish
+	fsm.wg.Wait()
 }

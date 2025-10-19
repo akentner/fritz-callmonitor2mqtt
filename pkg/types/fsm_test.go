@@ -94,8 +94,8 @@ func TestTimeoutTransitions(t *testing.T) {
 			// Set initial state
 			fsm.mu.Lock()
 			fsm.currentState = tt.initialState
-			fsm.mu.Unlock()
 			fsm.handleTimeouts(tt.initialState)
+			fsm.mu.Unlock()
 
 			if tt.hasTimeout {
 				// Wait for timeout + some buffer
@@ -372,10 +372,11 @@ func TestVoiceBoxFinishState(t *testing.T) {
 	}
 
 	// Check that finishState is set to voiceBox
-	if fsm.finishState == nil {
+	finishState := fsm.GetFinishState()
+	if finishState == nil {
 		t.Errorf("Expected finishState to be set, got nil")
-	} else if *fsm.finishState != CallStatusVoiceBox {
-		t.Errorf("Expected finishState to be voiceBox, got %v", *fsm.finishState)
+	} else if *finishState != CallStatusVoiceBox {
+		t.Errorf("Expected finishState to be voiceBox, got %v", *finishState)
 	}
 
 	// Wait for first timeout to finished
@@ -391,10 +392,11 @@ func TestVoiceBoxFinishState(t *testing.T) {
 	}
 
 	// finishState should still be voiceBox
-	if fsm.finishState == nil {
+	finishState = fsm.GetFinishState()
+	if finishState == nil {
 		t.Errorf("Expected finishState to be preserved, got nil")
-	} else if *fsm.finishState != CallStatusVoiceBox {
-		t.Errorf("Expected finishState to remain voiceBox, got %v", *fsm.finishState)
+	} else if *finishState != CallStatusVoiceBox {
+		t.Errorf("Expected finishState to remain voiceBox, got %v", *finishState)
 	}
 
 	fsm.Cleanup()
