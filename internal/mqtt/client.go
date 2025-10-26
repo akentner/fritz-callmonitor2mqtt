@@ -1750,6 +1750,7 @@ func (c *Client) publishHeartbeat() error {
 		return fmt.Errorf("MQTT client not connected")
 	}
 
+	// Publish heartbeat
 	topic := fmt.Sprintf("%s/heartbeat", c.topicPrefix)
 	payload := map[string]interface{}{
 		"timestamp": time.Now().Format(time.RFC3339),
@@ -1772,6 +1773,18 @@ func (c *Client) publishHeartbeat() error {
 	}
 
 	slog.Debug("Heartbeat published successfully")
+
+	// Republish status to keep availability updated
+	statusTopic := fmt.Sprintf("%s/status", c.topicPrefix)
+	statusPayload, err := c.createStatusMessage("online")
+	if err != nil {
+		slog.Warn("Failed to create status message during heartbeat", "error", err)
+	} else {
+		if err := c.publish(statusTopic, statusPayload); err != nil {
+			slog.Warn("Failed to republish status during heartbeat", "error", err)
+		}
+	}
+
 	return nil
 }
 
