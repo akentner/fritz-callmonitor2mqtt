@@ -63,9 +63,10 @@ func NewCallManagerWithMQTT(mqttPublisher MQTTPublisher, onStatusChange func(lin
 // NewCallManagerWithMQTTAndDB creates a new call manager with MQTT and database persistence support
 func NewCallManagerWithMQTTAndDB(mqttPublisher MQTTPublisher, dbPersister DatabasePersister, onStatusChange func(line int, oldStatus, newStatus CallStatus, event *CallEvent)) *CallManager {
 	cm := &CallManager{
-		onStatusChange: onStatusChange,
-		mqttPublisher:  mqttPublisher,
-		dbPersister:    dbPersister,
+		onStatusChange:       onStatusChange,
+		mqttPublisher:        mqttPublisher,
+		dbPersister:          dbPersister,
+		pendingInternalCalls: make(map[string]*CallEvent),
 	}
 
 	cm.lineStateMachine = NewLineStateMachineWithMQTTAndDB(mqttPublisher, dbPersister, func(line int, oldState, newState CallStatus) {
