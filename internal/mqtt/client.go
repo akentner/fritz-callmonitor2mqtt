@@ -1358,11 +1358,12 @@ type HAEntityConfig struct {
 	UniqueID             string    `json:"unique_id"`
 	StateTopic           string    `json:"state_topic"`
 	Device               *HADevice `json:"device"`
-	AvailabilityTopic    string    `json:"availability_topic"`
+	AvailabilityTopic    string    `json:"availability_topic,omitempty"`
 	AvailabilityMode     string    `json:"availability_mode,omitempty"`
 	AvailabilityTemplate string    `json:"availability_template,omitempty"`
 	PayloadAvailable     string    `json:"payload_available,omitempty"`
 	PayloadNotAvailable  string    `json:"payload_not_available,omitempty"`
+	EntityCategory       string    `json:"entity_category,omitempty"`
 }
 
 // HASensorConfig represents a Home Assistant sensor configuration
@@ -1375,6 +1376,17 @@ type HASensorConfig struct {
 	UnitOfMeasurement      string   `json:"unit_of_measurement,omitempty"`
 	DeviceClass            string   `json:"device_class,omitempty"`
 	Options                []string `json:"options,omitempty"`
+}
+
+// HABinarySensorConfig represents a Home Assistant binary sensor configuration
+type HABinarySensorConfig struct {
+	HAEntityConfig
+	ValueTemplate       string `json:"value_template,omitempty"`
+	JSONAttributesTopic string `json:"json_attributes_topic,omitempty"`
+	Icon                string `json:"icon,omitempty"`
+	DeviceClass         string `json:"device_class,omitempty"`
+	PayloadOn           string `json:"payload_on,omitempty"`
+	PayloadOff          string `json:"payload_off,omitempty"`
 }
 
 // HAButtonConfig represents a Home Assistant button configuration
@@ -1544,25 +1556,29 @@ func (c *Client) setupMSNCallHistoryDiscovery(msn string, device *HADevice) erro
 
 // setupHeartbeatDiscovery creates discovery config for heartbeat sensor
 func (c *Client) setupHeartbeatDiscovery(device *HADevice) error {
-	config := &HASensorConfig{
+	config := &HABinarySensorConfig{
 		HAEntityConfig: HAEntityConfig{
-			Name:                fmt.Sprintf("%s Heartbeat", c.deviceName),
-			UniqueID:            fmt.Sprintf("%s_heartbeat", c.deviceIdentifier),
-			StateTopic:          fmt.Sprintf("%s/heartbeat", c.topicPrefix),
-			Device:              device,
-			AvailabilityTopic:   fmt.Sprintf("%s/heartbeat", c.topicPrefix),
-			AvailabilityMode:    "latest",
-			PayloadAvailable:    "", // Not used with availability_mode: latest
-			PayloadNotAvailable: "", // Not used with availability_mode: latest
+			Name:                 fmt.Sprintf("%s Heartbeat", c.deviceName),
+			UniqueID:             fmt.Sprintf("%s_heartbeat", c.deviceIdentifier),
+			StateTopic:           fmt.Sprintf("%s/heartbeat", c.topicPrefix),
+			Device:               device,
+			AvailabilityTopic:    fmt.Sprintf("%s/status", c.topicPrefix),
+			AvailabilityTemplate: `{{ value_json.state }}`,
+			EntityCategory:       "diagnostic",
 		},
-		ValueTemplate:       `{{ value_json.status }}`,
+		// Check if timestamp is within interval (with some tolerance)
+		ValueTemplate: `{% set interval = value_json.interval | int %}
+{% set max_age = interval * 3 %}
+{% set age = (now().timestamp() - as_timestamp(value_json.timestamp)) | int %}
+{{ 'alive' if age < max_age else 'dead' }}`,
 		JSONAttributesTopic: fmt.Sprintf("%s/heartbeat", c.topicPrefix),
 		Icon:                "mdi:heart-pulse",
-		DeviceClass:         "enum",
-		Options:             []string{"alive"},
+		DeviceClass:         "problem",
+		PayloadOn:           "dead",
+		PayloadOff:          "alive",
 	}
 
-	discoveryTopic := fmt.Sprintf("homeassistant/sensor/%s/heartbeat/config", c.deviceIdentifier)
+	discoveryTopic := fmt.Sprintf("homeassistant/binary_sensor/%s/heartbeat/config", c.deviceIdentifier)
 	return c.publishDiscoveryConfig(discoveryTopic, config)
 }
 
@@ -1633,10 +1649,14 @@ func (c *Client) removeHomeAssistantDiscovery() error {
 		}
 	}
 
-	// Remove discovery for heartbeat sensor
-	heartbeatTopic := fmt.Sprintf("homeassistant/sensor/%s/heartbeat/config", c.deviceIdentifier)
-	if err := c.publishNull(heartbeatTopic); err != nil {
-		slog.Error("Failed to remove heartbeat discovery", "error", err)
+	// Remove discovery for heartbeat sensor (both old sensor and new binary_sensor)
+	heartbeatSensorTopic := fmt.Sprintf("homeassistant/sensor/%s/heartbeat/config", c.deviceIdentifier)
+	if err := c.publishNull(heartbeatSensorTopic); err != nil {
+		slog.Error("Failed to remove old heartbeat sensor discovery", "error", err)
+	}
+	heartbeatBinarySensorTopic := fmt.Sprintf("homeassistant/binary_sensor/%s/heartbeat/config", c.deviceIdentifier)
+	if err := c.publishNull(heartbeatBinarySensorTopic); err != nil {
+		slog.Error("Failed to remove heartbeat binary sensor discovery", "error", err)
 	}
 
 	// Remove discovery for republish button
@@ -1656,6 +1676,13 @@ func (c *Client) startHeartbeat() {
 
 	slog.Info("MQTT heartbeat started",
 		"interval", c.heartbeatInterval.String())
+
+	// Publish initial heartbeat immediately to avoid showing "problem" during first interval
+	if err := c.publishHeartbeat(); err != nil {
+		slog.Warn("Initial heartbeat publish failed", "error", err)
+	} else {
+		slog.Debug("Initial heartbeat published successfully")
+	}
 
 	consecutiveFailures := 0
 	maxFailures := 3 // Trigger reconnect after 3 consecutive failures
@@ -1726,7 +1753,7 @@ func (c *Client) publishHeartbeat() error {
 	topic := fmt.Sprintf("%s/heartbeat", c.topicPrefix)
 	payload := map[string]interface{}{
 		"timestamp": time.Now().Format(time.RFC3339),
-		"status":    "alive",
+		"interval":  int(c.heartbeatInterval.Seconds()),
 	}
 
 	data, err := json.Marshal(payload)
@@ -1734,8 +1761,8 @@ func (c *Client) publishHeartbeat() error {
 		return fmt.Errorf("failed to marshal heartbeat: %w", err)
 	}
 
-	// Non-retained message with short timeout
-	token := c.client.Publish(topic, 0, false, data)
+	// Retained message so Home Assistant sees the last heartbeat on startup
+	token := c.client.Publish(topic, 1, true, data)
 	if !token.WaitTimeout(2 * time.Second) {
 		return fmt.Errorf("heartbeat publish timeout")
 	}
