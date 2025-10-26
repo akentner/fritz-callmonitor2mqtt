@@ -51,6 +51,11 @@ type Client struct {
 	lineStatusParticipants map[string]*types.LineStatusParticipant
 	callHistory            *types.CallHistory
 	msnCallHistories       map[string]*types.MSNCallHistory
+
+	// Heartbeat management
+	heartbeatInterval time.Duration
+	heartbeatStop     chan struct{}
+	heartbeatDone     chan struct{}
 }
 
 // NewClient creates a new MQTT client
@@ -79,7 +84,10 @@ func NewClient(broker string, port int, username, password, clientID, topicPrefi
 			Calls:   make([]types.CallEvent, 0),
 			MaxSize: 50,
 		},
-		msnCallHistories: make(map[string]*types.MSNCallHistory),
+		msnCallHistories:  make(map[string]*types.MSNCallHistory),
+		heartbeatInterval: 30 * time.Second, // Default: 30 seconds
+		heartbeatStop:     make(chan struct{}),
+		heartbeatDone:     make(chan struct{}),
 	}
 
 	// Initialize MSN call histories for each configured MSN
@@ -147,6 +155,10 @@ func (c *Client) Connect() error {
 
 	c.connected = true
 	slog.Info("Successfully connected to MQTT broker")
+
+	// Start heartbeat
+	go c.startHeartbeat()
+
 	return nil
 } // Disconnect closes the MQTT connection
 func (c *Client) Disconnect() error {
@@ -158,6 +170,9 @@ func (c *Client) Disconnect() error {
 	}
 
 	slog.Info("Disconnecting from MQTT broker...")
+
+	// Stop heartbeat
+	c.stopHeartbeat()
 
 	// // Remove Home Assistant Discovery configurations
 	// if err := c.removeHomeAssistantDiscovery(); err != nil {
@@ -1362,6 +1377,18 @@ type HASensorConfig struct {
 	Options                []string `json:"options,omitempty"`
 }
 
+// HAButtonConfig represents a Home Assistant button configuration
+type HAButtonConfig struct {
+	Name              string    `json:"name"`
+	UniqueID          string    `json:"unique_id"`
+	CommandTopic      string    `json:"command_topic"`
+	Device            *HADevice `json:"device"`
+	AvailabilityTopic string    `json:"availability_topic,omitempty"`
+	PayloadPress      string    `json:"payload_press,omitempty"`
+	Icon              string    `json:"icon,omitempty"`
+	DeviceClass       string    `json:"device_class,omitempty"`
+}
+
 // MarshalJSON implements custom JSON marshaling for HASensorConfig
 // Automatically sets DeviceClass to "enum" when Options is set
 func (h *HASensorConfig) MarshalJSON() ([]byte, error) {
@@ -1416,6 +1443,16 @@ func (c *Client) setupHomeAssistantDiscovery() error {
 				"msn", msn,
 				"error", err)
 		}
+	}
+
+	// Setup discovery for heartbeat sensor
+	if err := c.setupHeartbeatDiscovery(device); err != nil {
+		slog.Error("Failed to setup heartbeat discovery", "error", err)
+	}
+
+	// Setup discovery for republish button
+	if err := c.setupRepublishButtonDiscovery(device); err != nil {
+		slog.Error("Failed to setup republish button discovery", "error", err)
 	}
 
 	slog.Debug("Home Assistant MQTT Discovery setup completed")
@@ -1505,6 +1542,46 @@ func (c *Client) setupMSNCallHistoryDiscovery(msn string, device *HADevice) erro
 	return c.publishDiscoveryConfig(discoveryTopic, config)
 }
 
+// setupHeartbeatDiscovery creates discovery config for heartbeat sensor
+func (c *Client) setupHeartbeatDiscovery(device *HADevice) error {
+	config := &HASensorConfig{
+		HAEntityConfig: HAEntityConfig{
+			Name:                fmt.Sprintf("%s Heartbeat", c.deviceName),
+			UniqueID:            fmt.Sprintf("%s_heartbeat", c.deviceIdentifier),
+			StateTopic:          fmt.Sprintf("%s/heartbeat", c.topicPrefix),
+			Device:              device,
+			AvailabilityTopic:   fmt.Sprintf("%s/heartbeat", c.topicPrefix),
+			AvailabilityMode:    "latest",
+			PayloadAvailable:    "",    // Not used with availability_mode: latest
+			PayloadNotAvailable: "",    // Not used with availability_mode: latest
+		},
+		ValueTemplate:       `{{ value_json.status }}`,
+		JSONAttributesTopic: fmt.Sprintf("%s/heartbeat", c.topicPrefix),
+		Icon:                "mdi:heart-pulse",
+		DeviceClass:         "enum",
+		Options:             []string{"alive"},
+	}
+
+	discoveryTopic := fmt.Sprintf("homeassistant/sensor/%s/heartbeat/config", c.deviceIdentifier)
+	return c.publishDiscoveryConfig(discoveryTopic, config)
+}
+
+// setupRepublishButtonDiscovery creates discovery config for republish button
+func (c *Client) setupRepublishButtonDiscovery(device *HADevice) error {
+	config := &HAButtonConfig{
+		Name:         fmt.Sprintf("%s Republish States", c.deviceName),
+		UniqueID:     fmt.Sprintf("%s_republish_button", c.deviceIdentifier),
+		CommandTopic: fmt.Sprintf("%s/republish/request", c.topicPrefix),
+		Device:       device,
+		PayloadPress: `{"id":"homeassistant","action":"republish"}`,
+		Icon:         "mdi:refresh",
+		DeviceClass:  "restart",
+	}
+
+	discoveryTopic := fmt.Sprintf("homeassistant/button/%s/republish/config", c.deviceIdentifier)
+	return c.publishDiscoveryConfig(discoveryTopic, config)
+}
+
 // publishDiscoveryConfig publishes a discovery configuration to Home Assistant
 func (c *Client) publishDiscoveryConfig(topic string, config interface{}) error {
 	payload, err := json.Marshal(config)
@@ -1556,5 +1633,160 @@ func (c *Client) removeHomeAssistantDiscovery() error {
 		}
 	}
 
+	// Remove discovery for heartbeat sensor
+	heartbeatTopic := fmt.Sprintf("homeassistant/sensor/%s/heartbeat/config", c.deviceIdentifier)
+	if err := c.publishNull(heartbeatTopic); err != nil {
+		slog.Error("Failed to remove heartbeat discovery", "error", err)
+	}
+
+	// Remove discovery for republish button
+	republishTopic := fmt.Sprintf("homeassistant/button/%s/republish/config", c.deviceIdentifier)
+	if err := c.publishNull(republishTopic); err != nil {
+		slog.Error("Failed to remove republish button discovery", "error", err)
+	}
+
 	return nil
+}
+
+// startHeartbeat starts the heartbeat mechanism to monitor MQTT connection health
+func (c *Client) startHeartbeat() {
+	ticker := time.NewTicker(c.heartbeatInterval)
+	defer ticker.Stop()
+	defer close(c.heartbeatDone)
+
+	slog.Info("MQTT heartbeat started",
+		"interval", c.heartbeatInterval.String())
+
+	consecutiveFailures := 0
+	maxFailures := 3 // Trigger reconnect after 3 consecutive failures
+
+	for {
+		select {
+		case <-ticker.C:
+			if err := c.publishHeartbeat(); err != nil {
+				consecutiveFailures++
+				slog.Warn("Heartbeat publish failed",
+					"consecutive_failures", consecutiveFailures,
+					"error", err)
+
+				if consecutiveFailures >= maxFailures {
+					slog.Error("Maximum heartbeat failures reached, triggering MQTT reconnection",
+						"failures", consecutiveFailures)
+					c.handleHeartbeatFailure()
+					return
+				}
+			} else {
+				// Reset failure counter on success
+				if consecutiveFailures > 0 {
+					slog.Info("Heartbeat recovered",
+						"after_failures", consecutiveFailures)
+				}
+				consecutiveFailures = 0
+			}
+
+		case <-c.heartbeatStop:
+			slog.Info("MQTT heartbeat stopped")
+			return
+		}
+	}
+}
+
+// stopHeartbeat stops the heartbeat mechanism
+func (c *Client) stopHeartbeat() {
+	// Send stop signal
+	select {
+	case c.heartbeatStop <- struct{}{}:
+		// Wait for heartbeat to finish with timeout
+		select {
+		case <-c.heartbeatDone:
+			slog.Debug("Heartbeat stopped successfully")
+		case <-time.After(5 * time.Second):
+			slog.Warn("Heartbeat stop timeout")
+		}
+	default:
+		// Channel might be closed or heartbeat already stopped
+		slog.Debug("Heartbeat already stopped or not running")
+	}
+
+	// Recreate channels for next connection
+	c.heartbeatStop = make(chan struct{})
+	c.heartbeatDone = make(chan struct{})
+}
+
+// publishHeartbeat publishes a heartbeat message to verify MQTT connection
+func (c *Client) publishHeartbeat() error {
+	c.mu.RLock()
+	connected := c.connected
+	c.mu.RUnlock()
+
+	if !connected {
+		return fmt.Errorf("MQTT client not connected")
+	}
+
+	topic := fmt.Sprintf("%s/heartbeat", c.topicPrefix)
+	payload := map[string]interface{}{
+		"timestamp": time.Now().Format(time.RFC3339),
+		"status":    "alive",
+	}
+
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal heartbeat: %w", err)
+	}
+
+	// Non-retained message with short timeout
+	token := c.client.Publish(topic, 0, false, data)
+	if !token.WaitTimeout(2 * time.Second) {
+		return fmt.Errorf("heartbeat publish timeout")
+	}
+
+	if token.Error() != nil {
+		return fmt.Errorf("heartbeat publish error: %w", token.Error())
+	}
+
+	slog.Debug("Heartbeat published successfully")
+	return nil
+}
+
+// handleHeartbeatFailure handles the case when heartbeat consistently fails
+func (c *Client) handleHeartbeatFailure() {
+	c.mu.Lock()
+	wasConnected := c.connected
+	c.connected = false
+	c.mu.Unlock()
+
+	if wasConnected {
+		slog.Error("MQTT connection lost, attempting reconnection...")
+
+		// Try to disconnect gracefully
+		if c.client != nil {
+			c.client.Disconnect(100)
+		}
+
+		// Attempt to reconnect
+		go func() {
+			maxRetries := 5
+			for i := 0; i < maxRetries; i++ {
+				waitTime := time.Duration(i+1) * 5 * time.Second
+				slog.Info("Reconnecting to MQTT broker",
+					"attempt", i+1,
+					"max_retries", maxRetries,
+					"wait_time", waitTime.String())
+
+				time.Sleep(waitTime)
+
+				if err := c.Connect(); err != nil {
+					slog.Error("MQTT reconnection failed",
+						"attempt", i+1,
+						"error", err)
+				} else {
+					slog.Info("MQTT reconnection successful")
+					return
+				}
+			}
+
+			slog.Error("MQTT reconnection failed after maximum retries",
+				"max_retries", maxRetries)
+		}()
+	}
 }
