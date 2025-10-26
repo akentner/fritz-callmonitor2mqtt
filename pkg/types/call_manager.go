@@ -3,6 +3,7 @@ package types
 import (
 	"fmt"
 	"log"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -10,16 +11,19 @@ import (
 
 // CallManager demonstrates how to use the LineStateMachine for call management
 type CallManager struct {
-	lineStateMachine *LineStateMachine
-	onStatusChange   func(line int, oldStatus, newStatus CallStatus, event *CallEvent)
-	mqttPublisher    MQTTPublisher
-	dbPersister      DatabasePersister
+	lineStateMachine     *LineStateMachine
+	onStatusChange       func(line int, oldStatus, newStatus CallStatus, event *CallEvent)
+	mqttPublisher        MQTTPublisher
+	dbPersister          DatabasePersister
+	pendingInternalCalls map[string]*CallEvent // Key: CallerMSN-CalledMSN-Timestamp for matching internal calls
+	mu                   sync.RWMutex          // Protects pendingInternalCalls
 }
 
 // NewCallManager creates a new call manager with FSM
 func NewCallManager(onStatusChange func(line int, oldStatus, newStatus CallStatus, event *CallEvent)) *CallManager {
 	cm := &CallManager{
-		onStatusChange: onStatusChange,
+		onStatusChange:       onStatusChange,
+		pendingInternalCalls: make(map[string]*CallEvent),
 	}
 
 	cm.lineStateMachine = NewLineStateMachine(func(line int, oldState, newState CallStatus) {
@@ -35,8 +39,9 @@ func NewCallManager(onStatusChange func(line int, oldStatus, newStatus CallStatu
 // NewCallManagerWithMQTT creates a new call manager with MQTT publishing support
 func NewCallManagerWithMQTT(mqttPublisher MQTTPublisher, onStatusChange func(line int, oldStatus, newStatus CallStatus, event *CallEvent)) *CallManager {
 	cm := &CallManager{
-		onStatusChange: onStatusChange,
-		mqttPublisher:  mqttPublisher,
+		onStatusChange:       onStatusChange,
+		mqttPublisher:        mqttPublisher,
+		pendingInternalCalls: make(map[string]*CallEvent),
 	}
 
 	cm.lineStateMachine = NewLineStateMachineWithMQTT(mqttPublisher, func(line int, oldState, newState CallStatus) {
@@ -94,6 +99,11 @@ func (cm *CallManager) ProcessEvent(event *CallEvent) *CallEvent {
 	// Update event with current FSM status and finish state
 	event.Status = newStatus
 	event.FinishState = cm.lineStateMachine.GetLineFinishState(event.Line)
+
+	// Detect and link internal calls
+	if event.DetectInternalCall() {
+		cm.linkInternalCallIfPossible(event)
+	}
 
 	// Log transition if status changed
 	if oldStatus != newStatus {
@@ -275,4 +285,83 @@ func ExampleCallManager() {
 	// Print final summary
 	log.Printf("Final state summary:")
 	log.Printf("%s", cm.GetStatusSummary())
+}
+
+// linkInternalCallIfPossible attempts to link an internal call event with its partner event
+// Internal calls generate two events: CALL (from caller) and RING (at callee)
+// This method matches them within a 2-second window based on caller/called MSNs and timestamp
+func (cm *CallManager) linkInternalCallIfPossible(event *CallEvent) {
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+
+	// Try to find a matching partner event
+	// Check timestamps within ±2 seconds window
+	var matchedKey string
+	var partner *CallEvent
+
+	// Search through pending events for a match
+	for key, pendingEvent := range cm.pendingInternalCalls {
+		// Must have same MSNs
+		if pendingEvent.CallerMSN != event.CallerMSN || pendingEvent.CalledMSN != event.CalledMSN {
+			continue
+		}
+
+		// Must be within 2 second window
+		timeDiff := event.Timestamp.Sub(pendingEvent.Timestamp)
+		if timeDiff < 0 {
+			timeDiff = -timeDiff
+		}
+		if timeDiff > 2*time.Second {
+			continue
+		}
+
+		// Found a match!
+		matchedKey = key
+		partner = pendingEvent
+		break
+	}
+
+	if partner != nil {
+		// Link the events
+		LinkInternalCallEvents(partner, event)
+
+		// Remove from pending
+		delete(cm.pendingInternalCalls, matchedKey)
+
+		log.Printf("Linked internal call: %s (%s) <-> %s (%s)",
+			partner.ID, partner.Type, event.ID, event.Type)
+
+		// Update partner event in database if persister is available
+		if cm.dbPersister != nil {
+			partnerCallID, err := uuid.Parse(partner.ID)
+			if err == nil {
+				if err := cm.dbPersister.UpdateCall(partnerCallID, partner.Status, partner.FinishState, partner); err != nil {
+					log.Printf("Failed to update linked partner event in database: %v", err)
+				}
+			}
+		}
+	} else {
+		// No match yet, store this event as pending
+		// Use event ID as key since it's unique
+		key := event.ID
+		cm.pendingInternalCalls[key] = event
+
+		// Schedule cleanup of old pending events after 5 seconds
+		go cm.cleanupOldPendingCall(key, 5*time.Second)
+	}
+}
+
+// cleanupOldPendingCall removes a pending internal call after a timeout
+// This prevents the map from growing indefinitely with unmatched events
+func (cm *CallManager) cleanupOldPendingCall(key string, delay time.Duration) {
+	time.Sleep(delay)
+
+	cm.mu.Lock()
+	defer cm.mu.Unlock()
+
+	if event, exists := cm.pendingInternalCalls[key]; exists {
+		log.Printf("Cleaning up unmatched internal call event: %s (type: %s, caller_msn: %s, called_msn: %s)",
+			event.ID, event.Type, event.CallerMSN, event.CalledMSN)
+		delete(cm.pendingInternalCalls, key)
+	}
 }

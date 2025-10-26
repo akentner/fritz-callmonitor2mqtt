@@ -1552,8 +1552,8 @@ func (c *Client) setupHeartbeatDiscovery(device *HADevice) error {
 			Device:              device,
 			AvailabilityTopic:   fmt.Sprintf("%s/heartbeat", c.topicPrefix),
 			AvailabilityMode:    "latest",
-			PayloadAvailable:    "",    // Not used with availability_mode: latest
-			PayloadNotAvailable: "",    // Not used with availability_mode: latest
+			PayloadAvailable:    "", // Not used with availability_mode: latest
+			PayloadNotAvailable: "", // Not used with availability_mode: latest
 		},
 		ValueTemplate:       `{{ value_json.status }}`,
 		JSONAttributesTopic: fmt.Sprintf("%s/heartbeat", c.topicPrefix),

@@ -65,6 +65,11 @@ type CallEvent struct {
 	Status          CallStatus     `json:"status"`                     // Current FSM status
 	FinishState     *CallStatus    `json:"finish_state,omitempty"`     // Final status before idle (missedCall, notReached, finished)
 	RawMessage      string         `json:"raw_message,omitempty"`      // Original FRITZ!Box message
+
+	// Internal call tracking
+	IsInternalCall   bool   `json:"is_internal_call"`             // True if both caller and callee are MSNs
+	LinkedCallID     string `json:"linked_call_id,omitempty"`     // UUID of the linked partner event for internal calls
+	InternalCallRole string `json:"internal_call_role,omitempty"` // "caller" or "callee" for internal calls
 }
 
 // LineStatus represents the current status of a phone line
@@ -205,4 +210,28 @@ func DetectMSN(phoneNumber string, msns []string) string {
 func (ce *CallEvent) EnrichWithMSNs(msns []string) {
 	ce.CallerMSN = DetectMSN(ce.Caller, msns)
 	ce.CalledMSN = DetectMSN(ce.Called, msns)
+}
+
+// DetectInternalCall checks if this call event is an internal call between MSNs
+// An internal call occurs when both the caller and callee have MSNs assigned
+func (ce *CallEvent) DetectInternalCall() bool {
+	return ce.CallerMSN != "" && ce.CalledMSN != ""
+}
+
+// LinkInternalCallEvents links two call events as an internal call pair
+// The caller event should be the CALL event, the callee event should be the RING event
+func LinkInternalCallEvents(callerEvent, calleeEvent *CallEvent) {
+	if callerEvent == nil || calleeEvent == nil {
+		return
+	}
+
+	// Mark caller event
+	callerEvent.IsInternalCall = true
+	callerEvent.InternalCallRole = "caller"
+	callerEvent.LinkedCallID = calleeEvent.ID
+
+	// Mark callee event
+	calleeEvent.IsInternalCall = true
+	calleeEvent.InternalCallRole = "callee"
+	calleeEvent.LinkedCallID = callerEvent.ID
 }

@@ -245,6 +245,14 @@ func (m *Migrator) applyMigration(tx *sql.Tx, migration Migration) error {
 		}
 	}
 
+	// Run post-migration data fixes for specific versions
+	if migration.Version == 11 {
+		// Migration 11: Link existing internal calls
+		if err := m.linkExistingInternalCalls(tx); err != nil {
+			return fmt.Errorf("failed to link existing internal calls: %w", err)
+		}
+	}
+
 	// Record the migration
 	insertSQL := `
 		INSERT INTO schema_migrations (version, name, description, applied_at)
@@ -282,4 +290,83 @@ func (m *Migrator) GetAppliedMigrations() ([]Migration, error) {
 	}
 
 	return migrations, nil
+}
+
+// linkExistingInternalCalls detects and links existing internal call events in the database
+// This is called as a post-migration hook for migration 11
+func (m *Migrator) linkExistingInternalCalls(tx *sql.Tx) error {
+	// Find potential internal call pairs
+	// A pair consists of a CALL event and a RING event within 2 seconds with matching MSNs
+	// Note: After migration 3, the table uses call_id (UUID) as primary key
+	query := `
+		SELECT 
+			c1.call_id as caller_id, 
+			c2.call_id as callee_id,
+			c1.caller_msn, 
+			c1.called_msn
+		FROM calls c1
+		JOIN calls c2 ON 
+			c1.caller_msn = c2.caller_msn AND
+			c1.called_msn = c2.called_msn AND
+			c1.caller_msn IS NOT NULL AND 
+			c1.caller_msn != '' AND
+			c1.called_msn IS NOT NULL AND
+			c1.called_msn != '' AND
+			c1.status = 'calling' AND
+			c2.status = 'ringing' AND
+			ABS(strftime('%s', c1.start_timestamp) - strftime('%s', c2.start_timestamp)) <= 2
+		WHERE 
+			c1.is_internal_call = 0 AND
+			c2.is_internal_call = 0
+	`
+
+	rows, err := tx.Query(query)
+	if err != nil {
+		return fmt.Errorf("failed to query internal call pairs: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	updateCount := 0
+	for rows.Next() {
+		var callerID, calleeID, callerMSN, calledMSN string
+		if err := rows.Scan(&callerID, &calleeID, &callerMSN, &calledMSN); err != nil {
+			continue // Skip rows with scan errors
+		}
+
+		// Update caller event (status = 'calling')
+		_, err = tx.Exec(`
+			UPDATE calls 
+			SET is_internal_call = 1,
+				linked_call_id = ?,
+				internal_call_role = 'caller'
+			WHERE call_id = ?
+		`, calleeID, callerID)
+		if err != nil {
+			continue // Skip on error
+		}
+
+		// Update callee event (status = 'ringing')
+		_, err = tx.Exec(`
+			UPDATE calls 
+			SET is_internal_call = 1,
+				linked_call_id = ?,
+				internal_call_role = 'callee'
+			WHERE call_id = ?
+		`, callerID, calleeID)
+		if err != nil {
+			continue // Skip on error
+		}
+
+		updateCount += 2
+	}
+
+	// Log the number of linked events
+	// Note: We can't use slog here as this runs during migration
+	// The caller will log the result
+	if updateCount > 0 {
+		fmt.Printf("Migration 11: Linked %d existing internal call events (%d pairs)\n",
+			updateCount, updateCount/2)
+	}
+
+	return nil
 }

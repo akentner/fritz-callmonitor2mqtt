@@ -315,5 +315,26 @@ DROP INDEX IF EXISTS idx_events_created_at;
 DROP INDEX IF EXISTS idx_events_timestamp;
 DROP TABLE IF EXISTS events;`,
 		},
+		{
+			Version:     11,
+			Name:        "add_internal_call_fields",
+			Description: "Add fields to track internal calls between MSNs",
+			UpSQL: `-- Add internal call tracking columns
+ALTER TABLE calls ADD COLUMN is_internal_call BOOLEAN DEFAULT FALSE NOT NULL;
+ALTER TABLE calls ADD COLUMN linked_call_id TEXT;
+ALTER TABLE calls ADD COLUMN internal_call_role TEXT; -- 'caller' or 'callee'
+
+-- Create index for efficient linking queries
+CREATE INDEX IF NOT EXISTS idx_calls_linked_call_id ON calls(linked_call_id) 
+WHERE linked_call_id IS NOT NULL;
+
+-- Create index for finding internal call pairs
+CREATE INDEX IF NOT EXISTS idx_calls_msn_timestamp ON calls(caller_msn, called_msn, start_timestamp)
+WHERE caller_msn IS NOT NULL AND called_msn IS NOT NULL;`,
+			DownSQL: `-- Remove internal call tracking
+DROP INDEX IF EXISTS idx_calls_msn_timestamp;
+DROP INDEX IF EXISTS idx_calls_linked_call_id;
+-- Note: SQLite doesn't support DROP COLUMN, would need table recreation`,
+		},
 	}
 }
