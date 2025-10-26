@@ -1573,7 +1573,7 @@ func (c *Client) setupRepublishButtonDiscovery(device *HADevice) error {
 		UniqueID:     fmt.Sprintf("%s_republish_button", c.deviceIdentifier),
 		CommandTopic: fmt.Sprintf("%s/republish/request", c.topicPrefix),
 		Device:       device,
-		PayloadPress: `{"id":"homeassistant","action":"republish"}`,
+		PayloadPress: `{"id":"homeassistant","method":"republish"}`,
 		Icon:         "mdi:refresh",
 		DeviceClass:  "restart",
 	}
